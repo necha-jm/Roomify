@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1041914574744",
+    "project_id": "room-72b6f",
+    "storage_bucket": "room-72b6f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1041914574744:android:5bacc1f7a7b9f57e20dded",
+        "android_client_info": {
+          "package_name": "com.app.roomify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBheNnn6osfwMStuzJNK_8rbxJ9YIWDGtg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

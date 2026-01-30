@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="white">#FFFFFFFF</color>
+        <!-- Room Status Colors -->
+    <color name="room_available">#4CAF50</color>
+    <color name="room_occupied">#F44336</color>
+    <color name="user_location">#2196F3</color>
+
+        <!-- Material Colors -->
+    <color name="accent">#FF4081</color>
+
+    <!-- Primary Colors -->
+    <color name="primary_light">#C5CAE9</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_dark">#F50057</color>
+
+    <!-- Background Colors -->
+    <color name="background_grey">#F5F5F5</color>
+    <color name="black">#000000</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#212121</color>
+    <color name="primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+
+    <!-- Grey Colors -->
+    <color name="grey">#9E9E9E</color>
+    <color name="grey_light">#E0E0E0</color>
+    <color name="grey_dark">#616161</color>
+
+    <!-- Status Colors -->
+    <color name="available">#4CAF50</color>
+    <color name="occupied">#F44336</color>
+    <color name="pending">#FF9800</color>
+
+</resources>

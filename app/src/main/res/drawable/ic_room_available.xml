@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="64dp"
+    android:viewportWidth="48"
+    android:viewportHeight="64">
+
+    <!-- Pin Shadow -->
+    <path
+        android:fillColor="#40000000"
+        android:pathData="M24,58 C14,48 4,34 4,24 C4,10.8 14.8,0 28,0 C41.2,0 52,10.8 52,24 C52,34 42,48 32,58 L24,58 Z"
+        android:translateY="4"/>
+
+    <!-- Pin Body (Green) -->
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M24,58 C14,48 4,34 4,24 C4,10.8 14.8,0 28,0 C41.2,0 52,10.8 52,24 C52,34 42,48 32,58 L24,58 Z"/>
+
+    <!-- Pin Highlight -->
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M16,8 C18,6 22,4 28,4 C34,4 38,6 40,8 C42,10 44,16 44,24 C44,28 42,34 40,38 C38,42 34,46 32,48 C30,50 26,54 24,56 L24,58 C26,56 30,52 32,50 C34,48 38,44 40,40 C42,36 44,30 44,26 C44,18 42,12 40,10 C38,8 34,6 28,6 C22,6 18,8 16,10 C14,12 12,18 12,26 C12,30 14,36 16,40 C18,44 22,48 24,50 C26,52 30,56 32,58 L32,56 C30,54 26,50 24,48 C22,46 18,42 16,38 C14,34 12,28 12,24 C12,16 14,10 16,8 Z"/>
+
+    <!-- Check Mark (Optional) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,24 L22,28 L30,20 L32,22 L22,32 L16,26 Z"/>
+
+    <!-- Pin Tip -->
+    <path
+        android:fillColor="#388E3C"
+        android:pathData="M24,56 L28,60 L20,60 Z"/>
+</vector>
