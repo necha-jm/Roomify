@@ -1,18 +1,18 @@
 package com.app.roomify;
 
-import android.content.Intent;
 import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-
+import android.content.Intent;
 import android.location.Address;
 import android.location.Geocoder;
 import android.os.AsyncTask;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import org.osmdroid.config.Configuration;
@@ -27,6 +27,7 @@ import java.util.UUID;
 
 public class PostRoomActivity extends AppCompatActivity {
 
+    private static final String TAG = "PostRoomActivity";
     private MapView mapView;
     private EditText etTitle, etDescription, etPrice;
     private TextView tvSelectedAddress;
@@ -42,6 +43,8 @@ public class PostRoomActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_room);
+
+        Log.d(TAG, "onCreate called");
 
         // Initialize Firebase
         auth = FirebaseAuth.getInstance();
@@ -59,49 +62,83 @@ public class PostRoomActivity extends AppCompatActivity {
         btnSubmit = findViewById(R.id.btnSubmitRoom);
 
         // Setup map
-        mapView.setTileSource(TileSourceFactory.MAPNIK);
-        mapView.setBuiltInZoomControls(true);
-        mapView.setMultiTouchControls(true);
-
-        // Set initial view
-        GeoPoint defaultLocation = new GeoPoint(40.7128, -74.0060);
-        mapView.getController().setCenter(defaultLocation);
-        mapView.getController().setZoom(14.0);
-
-        // Add map tap listener for location selection
-        mapView.getOverlays().add(new org.osmdroid.views.overlay.Overlay() {
-            @Override
-            public boolean onSingleTapConfirmed(MotionEvent e, MapView mapView) {
-                GeoPoint geoPoint = (GeoPoint) mapView.getProjection().fromPixels(
-                        (int) e.getX(), (int) e.getY());
-
-                if (geoPoint != null) {
-                    selectedLatitude = geoPoint.getLatitude();
-                    selectedLongitude = geoPoint.getLongitude();
-
-                    // Clear previous markers
-                    mapView.getOverlays().removeIf(overlay ->
-                            overlay instanceof Marker &&
-                                    ((Marker) overlay).getTitle().equals("Selected Location"));
-
-                    // Add new marker
-                    Marker locationMarker = new Marker(mapView);
-                    locationMarker.setPosition(geoPoint);
-                    locationMarker.setTitle("Selected Location");
-                    locationMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-                    mapView.getOverlays().add(locationMarker);
-                    mapView.invalidate();
-
-
-                    // Get address from coordinates
-                    new GeocodeTask().execute(geoPoint);
-                }
-                return true;
-            }
-        });
+        setupMap();
 
         // Submit button listener
-        btnSubmit.setOnClickListener(v -> submitRoom());
+        btnSubmit.setOnClickListener(v -> {
+            Log.d(TAG, "Submit button clicked");
+            submitRoom();
+        });
+
+        // Add a test button for debugging
+        Button testButton = new Button(this);
+        testButton.setText("Test Direct Navigation");
+        testButton.setOnClickListener(v -> {
+            Log.d(TAG, "Test button clicked");
+            // Test if RoomDetailsActivity can be opened directly
+            Room testRoom = new Room();
+            testRoom.setId("test-id");
+            testRoom.setTitle("Test Room");
+            testRoom.setPrice(1000);
+            testRoom.setAddress("Test Address");
+            testRoom.setLatitude(40.7128);
+            testRoom.setLongitude(-74.0060);
+            testRoom.setDescription("Test Description");
+            navigateToRoomDetails(testRoom);
+        });
+    }
+
+    private void setupMap() {
+        try {
+            mapView.setTileSource(TileSourceFactory.MAPNIK);
+            mapView.setBuiltInZoomControls(true);
+            mapView.setMultiTouchControls(true);
+
+            // Set initial view
+            GeoPoint defaultLocation = new GeoPoint(40.7128, -74.0060);
+            mapView.getController().setCenter(defaultLocation);
+            mapView.getController().setZoom(14.0);
+
+            // Add map tap listener for location selection
+            mapView.getOverlays().add(new org.osmdroid.views.overlay.Overlay() {
+                @Override
+                public boolean onSingleTapConfirmed(MotionEvent e, MapView mapView) {
+                    Log.d(TAG, "Map tapped");
+                    try {
+                        GeoPoint geoPoint = (GeoPoint) mapView.getProjection().fromPixels(
+                                (int) e.getX(), (int) e.getY());
+
+                        if (geoPoint != null) {
+                            selectedLatitude = geoPoint.getLatitude();
+                            selectedLongitude = geoPoint.getLongitude();
+                            Log.d(TAG, "Location selected: " + selectedLatitude + ", " + selectedLongitude);
+
+                            // Clear previous markers
+                            mapView.getOverlays().removeIf(overlay ->
+                                    overlay instanceof Marker &&
+                                            "Selected Location".equals(((Marker) overlay).getTitle()));
+
+                            // Add new marker
+                            Marker locationMarker = new Marker(mapView);
+                            locationMarker.setPosition(geoPoint);
+                            locationMarker.setTitle("Selected Location");
+                            locationMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
+                            mapView.getOverlays().add(locationMarker);
+                            mapView.invalidate();
+
+                            // Get address from coordinates
+                            new GeocodeTask().execute(geoPoint);
+                        }
+                    } catch (Exception ex) {
+                        Log.e(TAG, "Error handling map tap", ex);
+                    }
+                    return true;
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up map", e);
+            Toast.makeText(this, "Error setting up map", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private class GeocodeTask extends AsyncTask<GeoPoint, Void, String> {
@@ -131,39 +168,54 @@ public class PostRoomActivity extends AppCompatActivity {
                     return addressBuilder.toString();
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Geocoding error", e);
             }
             return "Address not found";
         }
 
         @Override
         protected void onPostExecute(String address) {
+            Log.d(TAG, "Address found: " + address);
             tvSelectedAddress.setText(address);
         }
     }
 
     private void submitRoom() {
+        Log.d(TAG, "submitRoom() called");
+
         String title = etTitle.getText().toString().trim();
         String description = etDescription.getText().toString().trim();
         String priceStr = etPrice.getText().toString().trim();
 
+        Log.d(TAG, "Title: " + title);
+        Log.d(TAG, "Description: " + description);
+        Log.d(TAG, "Price: " + priceStr);
+        Log.d(TAG, "Lat/Lng: " + selectedLatitude + ", " + selectedLongitude);
+
         // Validation
         if (TextUtils.isEmpty(title)) {
+            Log.d(TAG, "Title validation failed");
             etTitle.setError("Title is required");
+            etTitle.requestFocus();
             return;
         }
 
         if (TextUtils.isEmpty(description)) {
+            Log.d(TAG, "Description validation failed");
             etDescription.setError("Description is required");
+            etDescription.requestFocus();
             return;
         }
 
         if (TextUtils.isEmpty(priceStr)) {
+            Log.d(TAG, "Price validation failed");
             etPrice.setError("Price is required");
+            etPrice.requestFocus();
             return;
         }
 
         if (selectedLatitude == 0.0 || selectedLongitude == 0.0) {
+            Log.d(TAG, "Location validation failed");
             Toast.makeText(this, "Please select a location on the map", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -172,16 +224,20 @@ public class PostRoomActivity extends AppCompatActivity {
         try {
             price = Double.parseDouble(priceStr);
         } catch (NumberFormatException e) {
+            Log.d(TAG, "Price format error: " + e.getMessage());
             etPrice.setError("Invalid price");
+            etPrice.requestFocus();
             return;
         }
 
         String currentUser = auth.getCurrentUser() != null ?
                 auth.getCurrentUser().getUid() : "anonymous";
+        Log.d(TAG, "Current user: " + currentUser);
 
         // Create Room object
         Room room = new Room();
-        room.setId(UUID.randomUUID().toString());
+        String roomId = UUID.randomUUID().toString();
+        room.setId(roomId);
         room.setTitle(title);
         room.setDescription(description);
         room.setPrice(price);
@@ -191,30 +247,84 @@ public class PostRoomActivity extends AppCompatActivity {
         room.setPostedBy(currentUser);
         room.setAvailable(true);
 
+        // Add timestamp if your Room class has it
+
+        Log.d(TAG, "Saving room to Firebase...");
+
         // Save to Firebase
         db.collection("rooms")
-                .document(room.getId())
+                .document(roomId)
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
+                    Log.d(TAG, "Room saved successfully to Firebase");
                     Toast.makeText(PostRoomActivity.this,
                             "Room posted successfully!", Toast.LENGTH_SHORT).show();
-                    finish(); // Go back to map
+
+                    // Go directly to RoomDetailsActivity
+                    navigateToRoomDetails(room);
                 })
                 .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to save room to Firebase: " + e.getMessage(), e);
                     Toast.makeText(PostRoomActivity.this,
-                            "Failed to post room: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            "Failed to post room: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 });
+
+        Log.d(TAG, "Firebase save operation initiated");
+    }
+
+    private void navigateToRoomDetails(Room room) {
+        try {
+            Log.d(TAG, "Navigating to RoomDetailsActivity");
+            Log.d(TAG, "Room ID: " + room.getId());
+            Log.d(TAG, "Room Title: " + room.getTitle());
+
+            Intent intent = new Intent(this, RoomDetailsActivity.class);
+            intent.putExtra("room_id", room.getId());
+            intent.putExtra("room_title", room.getTitle());
+            intent.putExtra("room_price", room.getPrice());
+            intent.putExtra("room_address", room.getAddress());
+            intent.putExtra("room_lat", room.getLatitude());
+            intent.putExtra("room_lng", room.getLongitude());
+            intent.putExtra("room_description", room.getDescription());
+            intent.putExtra("room_posted_by", room.getPostedBy());
+            intent.putExtra("is_new_post", true); // Flag to indicate this is a new post
+
+            // Check if activity exists
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+                Log.d(TAG, "RoomDetailsActivity started successfully");
+                finish(); // Close this activity
+            } else {
+                Log.e(TAG, "RoomDetailsActivity not found in package manager");
+                Toast.makeText(this, "Cannot open room details", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error navigating to RoomDetailsActivity: " + e.getMessage(), e);
+            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        mapView.onResume();
+        if (mapView != null) {
+            try {
+                mapView.onResume();
+            } catch (Exception e) {
+                Log.e(TAG, "Error in map onResume", e);
+            }
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        mapView.onPause();
+        if (mapView != null) {
+            try {
+                mapView.onPause();
+            } catch (Exception e) {
+                Log.e(TAG, "Error in map onPause", e);
+            }
+        }
     }
 }
