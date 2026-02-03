@@ -42,7 +42,7 @@ public class SplashActivity extends AppCompatActivity {
 
         // Navigate after 3 seconds
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            Intent intent = new Intent(SplashActivity.this, MainMapActivity.class);
+            Intent intent = new Intent(SplashActivity.this, LocationMap.class);
             startActivity(intent);
             finish();
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
