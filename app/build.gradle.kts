@@ -47,6 +47,7 @@ dependencies {
     implementation(libs.activity)
     implementation(libs.constraintlayout)
     implementation(libs.firebase.database)
+    implementation(libs.cardview)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
@@ -61,6 +62,11 @@ dependencies {
     implementation ("org.osmdroid:osmdroid-android:6.1.16")
     implementation("com.google.android.gms:play-services-maps:20.0.0")
     implementation("com.google.android.gms:play-services-location:20.0.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+// CoordinatorLayout
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
+// Places API
+    implementation("com.google.android.libraries.places:places:3.3.0")
 
 
 

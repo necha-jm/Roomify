@@ -35,4 +35,9 @@
     <color name="occupied">#F44336</color>
     <color name="pending">#FF9800</color>
 
+    <color name="primary_color">#2196F3</color>
+    <color name="success_green">#4CAF50</color>
+    <color name="warning_orange">#FF9800</color>
+    <color name="error_red">#F44336</color>
+
 </resources>
