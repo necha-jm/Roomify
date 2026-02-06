@@ -62,6 +62,7 @@
             android:inputType="numberDecimal"
             android:layout_marginBottom="16dp" />
 
+
         <Button
             android:id="@+id/btnSubmitRoom"
             android:layout_width="match_parent"

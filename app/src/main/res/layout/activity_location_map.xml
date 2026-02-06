@@ -82,10 +82,16 @@
                             android:layout_marginEnd="8dp"
                             android:background="@android:color/white">
 
+                            <ImageView
+                                android:id="@+id/apartment"
+                                android:layout_width="50dp"
+                                android:layout_height="40dp"
+                                android:src="@drawable/ic_apartment"/>
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Rides"
+                                android:text="Apartment"
                                 android:gravity="center"/>
                         </LinearLayout>
 
@@ -98,10 +104,16 @@
                             android:layout_marginStart="8dp"
                             android:background="@android:color/white">
 
+                            <ImageView
+                                android:id="@+id/addRoom"
+                                android:layout_width="50dp"
+                                android:layout_height="40dp"
+                                android:src="@drawable/ic_addd"/>
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Schedule"
+                                android:text="Add Room"
                                 android:gravity="center"/>
                         </LinearLayout>
 

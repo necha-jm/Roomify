@@ -18,13 +18,16 @@ public class Room {
     private List<String> amenities;
     private List<String> images;
 
+    private long createdAt;
+
+
     // Empty constructor for Firebase
     public Room() {}
 
     // Constructor
     public Room(String id, String title, String description, double price,
                 double latitude, double longitude, String address,
-                String postedBy, boolean isAvailable) {
+                String postedBy, boolean isAvailable,long createdAt) {
         this.id = id;
         this.title = title;
         this.description = description;
@@ -35,6 +38,7 @@ public class Room {
         this.postedBy = postedBy;
         this.postedDate = new Date();
         this.isAvailable = isAvailable;
+        this.createdAt = createdAt;
     }
 
     // Getters and Setters
@@ -73,4 +77,13 @@ public class Room {
 
     public List<String> getImages() { return images; }
     public void setImages(List<String> images) { this.images = images; }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(long createdAt) {
+        this.createdAt = createdAt;
+    }
+
 }

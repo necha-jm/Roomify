@@ -7,6 +7,8 @@ import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.os.Bundle;
+import android.view.View;
+import android.widget.ImageView;
 import android.widget.SearchView;
 import android.widget.Toast;
 
@@ -46,6 +48,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private Location currentLocation;
     private FusedLocationProviderClient fusedLocationProviderClient;
 
+    ImageView apartment, addRoom;
+
     private SearchView search;
 
     @Override
@@ -56,9 +60,30 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         db = FirebaseFirestore.getInstance();
 
+        addRoom = findViewById(R.id.addRoom);
+
+        addRoom.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(LocationMap.this,PostRoomActivity.class);
+                startActivity(intent);
+            }
+        });
+
+
+        apartment = findViewById(R.id.apartment);
+
+        apartment.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(LocationMap.this,RoomDetailsActivity.class);
+                startActivity(intent);
+            }
+        });
 
         CardView bottomSheet = findViewById(R.id.floating_layout);
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet);
+
 
         // Set initial state (collapsed)
         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
@@ -172,11 +197,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
             myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14));
 
-            myMap.addMarker(new MarkerOptions()
-                    .position(myLocation)
-                    .title("My Location")
-                    .icon(BitmapDescriptorFactory
-                            .defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)));
         }
 
         // 🔥 LOAD ROOMS MARKERS

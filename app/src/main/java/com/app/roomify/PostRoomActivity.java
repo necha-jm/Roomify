@@ -31,7 +31,6 @@ public class PostRoomActivity extends AppCompatActivity {
     private MapView mapView;
     private EditText etTitle, etDescription, etPrice;
     private TextView tvSelectedAddress;
-    private Button btnSubmit;
 
     private double selectedLatitude = 0.0;
     private double selectedLongitude = 0.0;
@@ -59,7 +58,7 @@ public class PostRoomActivity extends AppCompatActivity {
         etDescription = findViewById(R.id.etDescription);
         etPrice = findViewById(R.id.etPrice);
         tvSelectedAddress = findViewById(R.id.tvSelectedAddress);
-        btnSubmit = findViewById(R.id.btnSubmitRoom);
+        Button btnSubmit = findViewById(R.id.btnSubmitRoom);
 
         // Setup map
         setupMap();
@@ -84,7 +83,7 @@ public class PostRoomActivity extends AppCompatActivity {
             testRoom.setLatitude(40.7128);
             testRoom.setLongitude(-74.0060);
             testRoom.setDescription("Test Description");
-            navigateToRoomDetails(testRoom);
+            navigateToRoomDetails(testRoom.getId());
         });
     }
 
@@ -246,6 +245,9 @@ public class PostRoomActivity extends AppCompatActivity {
         room.setAddress(tvSelectedAddress.getText().toString());
         room.setPostedBy(currentUser);
         room.setAvailable(true);
+        room.setCreatedAt(System.currentTimeMillis());
+
+
 
         // Add timestamp if your Room class has it
 
@@ -256,53 +258,45 @@ public class PostRoomActivity extends AppCompatActivity {
                 .document(roomId)
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "Room saved successfully to Firebase");
-                    Toast.makeText(PostRoomActivity.this,
-                            "Room posted successfully!", Toast.LENGTH_SHORT).show();
 
-                    // Go directly to RoomDetailsActivity
-                    navigateToRoomDetails(room);
+                    Log.d(TAG, "Room saved successfully to Firebase");
+
+                    Toast.makeText(
+                            PostRoomActivity.this,
+                            "Room posted successfully!",
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                    // ✅ Navigate using ONLY roomId
+                    navigateToRoomDetails(roomId);
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to save room to Firebase: " + e.getMessage(), e);
-                    Toast.makeText(PostRoomActivity.this,
-                            "Failed to post room: " + e.getMessage(), Toast.LENGTH_LONG).show();
+
+                    Log.e(TAG, "Failed to save room to Firebase", e);
+
+                    Toast.makeText(
+                            PostRoomActivity.this,
+                            "Failed to post room. Try again.",
+                            Toast.LENGTH_LONG
+                    ).show();
                 });
+
 
         Log.d(TAG, "Firebase save operation initiated");
     }
 
-    private void navigateToRoomDetails(Room room) {
-        try {
-            Log.d(TAG, "Navigating to RoomDetailsActivity");
-            Log.d(TAG, "Room ID: " + room.getId());
-            Log.d(TAG, "Room Title: " + room.getTitle());
+    private void navigateToRoomDetails(String roomId) {
+        Log.d(TAG, "Navigating to RoomDetailsActivity");
+        Log.d(TAG, "Room ID: " + roomId);
 
-            Intent intent = new Intent(this, RoomDetailsActivity.class);
-            intent.putExtra("room_id", room.getId());
-            intent.putExtra("room_title", room.getTitle());
-            intent.putExtra("room_price", room.getPrice());
-            intent.putExtra("room_address", room.getAddress());
-            intent.putExtra("room_lat", room.getLatitude());
-            intent.putExtra("room_lng", room.getLongitude());
-            intent.putExtra("room_description", room.getDescription());
-            intent.putExtra("room_posted_by", room.getPostedBy());
-            intent.putExtra("is_new_post", true); // Flag to indicate this is a new post
-
-            // Check if activity exists
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-                Log.d(TAG, "RoomDetailsActivity started successfully");
-                finish(); // Close this activity
-            } else {
-                Log.e(TAG, "RoomDetailsActivity not found in package manager");
-                Toast.makeText(this, "Cannot open room details", Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error navigating to RoomDetailsActivity: " + e.getMessage(), e);
-            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+        Intent intent = new Intent(PostRoomActivity.this, RoomDetailsActivity.class);
+        intent.putExtra("room_id", roomId);
+        startActivity(intent);
+        finish();
     }
+
+
+
 
     @Override
     protected void onResume() {
