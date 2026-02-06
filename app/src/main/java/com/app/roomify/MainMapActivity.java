@@ -192,6 +192,7 @@ public class MainMapActivity extends AppCompatActivity {
     }
 
     private void requestLocationPermission() {
+
         ActivityCompat.requestPermissions(this,
                 new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                 LOCATION_PERMISSION_REQUEST_CODE);
