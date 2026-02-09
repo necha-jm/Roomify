@@ -110,26 +110,27 @@ public class RoomDetailsActivity extends AppCompatActivity {
         fusedLocationClient.getLastLocation()
                 .addOnSuccessListener(location -> {
                     if (location != null) {
-                        String uri = "http://maps.google.com/maps?daddr=" +
-                                roomLat + "," + roomLng +
-                                "&saddr=" + location.getLatitude() + "," + location.getLongitude();
+                        // Use Google Maps Directions URL with walking mode
+                        String uri = "https://www.google.com/maps/dir/?api=1" +
+                                "&origin=" + location.getLatitude() + "," + location.getLongitude() +
+                                "&destination=" + roomLat + "," + roomLng +
+                                "&travelmode=walking"; //  walking mode
 
-                        Intent mapIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
-                        mapIntent.setPackage("com.google.android.apps.maps");
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
+                        intent.setPackage("com.google.android.apps.maps"); // open in Google Maps app
 
-                        if (mapIntent.resolveActivity(getPackageManager()) != null) {
-                            startActivity(mapIntent);
+                        if (intent.resolveActivity(getPackageManager()) != null) {
+                            startActivity(intent);
                         } else {
-                            Intent browserIntent = new Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" +
-                                            roomLat + "," + roomLng));
-                            startActivity(browserIntent);
+                            // fallback if Maps app not installed
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
                         }
                     } else {
                         Toast.makeText(this, "Unable to get your location", Toast.LENGTH_SHORT).show();
                     }
                 });
     }
+
 
     private void contactRoomOwner() {
         if (ownerId == null || ownerId.isEmpty()) {
