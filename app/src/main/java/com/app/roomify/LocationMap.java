@@ -1,5 +1,4 @@
 package com.app.roomify;
-
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -11,134 +10,122 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.SearchView;
 import android.widget.Toast;
-
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
-
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.internal.ICameraUpdateFactoryDelegate;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class LocationMap extends AppCompatActivity implements OnMapReadyCallback {
 
     private static final int PERMISSION_FINE_CODE = 100;
 
-    private FirebaseFirestore db;
-
-    private BottomSheetBehavior<CardView> bottomSheetBehavior;
-
-
     private GoogleMap myMap;
     private Location currentLocation;
     private FusedLocationProviderClient fusedLocationProviderClient;
-
-    ImageView apartment, addRoom;
-
+    private FirebaseFirestore db;
     private SearchView search;
+    private ImageView addRoom, apartment;
+
+
+
+    private BottomSheetBehavior<CardView> bottomSheetBehavior;
+
+    // IMPORTANT DATA HOLDERS
+    private final List<Room> roomsList = new ArrayList<>();
+    private final Map<Marker, Room> markerRoomMap = new HashMap<>();
+
+    private boolean shouldRefreshRooms = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_location_map);
 
         db = FirebaseFirestore.getInstance();
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
 
         addRoom = findViewById(R.id.addRoom);
-
-        addRoom.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(LocationMap.this,PostRoomActivity.class);
-                startActivity(intent);
-            }
-        });
-
-
+        search = findViewById(R.id.search);
         apartment = findViewById(R.id.apartment);
-
-        apartment.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(LocationMap.this,RoomDetailsActivity.class);
-                startActivity(intent);
-            }
-        });
 
         CardView bottomSheet = findViewById(R.id.floating_layout);
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet);
-
-
-        // Set initial state (collapsed)
         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
-
-        // Optional: set peek height
-        bottomSheetBehavior.setPeekHeight(200); // adjust as you like
-
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-
-        requestLocationPermission();
-
-        search = findViewById(R.id.search);
-
-        search.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-            @Override
-            public boolean onQueryTextChange(String newText) {
+        bottomSheetBehavior.setPeekHeight(200);
 
 
-                return false;
+        // ✅ MODIFY HERE
+        apartment.setOnClickListener(v -> {
+            if (roomsList.isEmpty()) {
+                Toast.makeText(this, "No rooms available", Toast.LENGTH_SHORT).show();
+                return;
             }
 
-            @Override
-            public boolean onQueryTextSubmit(String query) {
-                String  location = search.getQuery().toString();
-                List<Address> addressList = null;
-
-                if(location !=null){
-                    Geocoder geocoder = new Geocoder(LocationMap.this);
-
-                    try{
-                        addressList = geocoder.getFromLocationName(location,1);
-                    } catch (IOException e) {
-
-                        e.printStackTrace();
-                    }
-
-                    Address address = addressList.get(0);
-                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
-                    myMap.addMarker(new MarkerOptions().position(latLng).title("My Location")
-                            .icon(BitmapDescriptorFactory
-                                    .defaultMarker(BitmapDescriptorFactory.HUE_RED)));
-
-                    myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng,10));
-
-                }
-
-
-                return false;
-            }
+            Room room = roomsList.get(0); // get the first available room
+            Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
+            intent.putExtra("room_id", room.getId()); // pass room_id safely
+            startActivity(intent);
         });
 
 
+
+        addRoom.setOnClickListener(v ->
+                startActivity(new Intent(LocationMap.this, PostRoomActivity.class)));
+
+        requestLocationPermission();
+        setupSearch();
     }
 
-    // 🔐 Ask permission immediately
+    // SEARCH LOCATION
+    private void setupSearch() {
+        search.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                Geocoder geocoder = new Geocoder(LocationMap.this);
+                try {
+                    List<Address> addressList = geocoder.getFromLocationName(query, 1);
+                    if (addressList != null && !addressList.isEmpty()) {
+                        Address address = addressList.get(0);
+                        LatLng latLng = new LatLng(
+                                address.getLatitude(),
+                                address.getLongitude());
+
+                        myMap.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(latLng, 12));
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                return false;
+            }
+        });
+    }
+
+    // REQUEST LOCATION PERMISSION
     private void requestLocationPermission() {
         if (ActivityCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -154,7 +141,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
     }
 
-    // 📍 Get last known location
+
+    // GET USER LOCATION
     private void getLastLocation() {
         if (ActivityCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -162,7 +150,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         fusedLocationProviderClient.getLastLocation()
                 .addOnSuccessListener(location -> {
-
                     if (location != null) {
                         currentLocation = location;
 
@@ -173,18 +160,18 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         if (mapFragment != null) {
                             mapFragment.getMapAsync(this);
                         }
-
                     } else {
                         Toast.makeText(
                                 this,
-                                "Turn on GPS to get location",
+                                "Turn on GPS",
                                 Toast.LENGTH_LONG
                         ).show();
                     }
                 });
     }
 
-    // 🗺️ Map ready
+
+    // MAP READY
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
         myMap = googleMap;
@@ -192,68 +179,86 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         if (currentLocation != null) {
             LatLng myLocation = new LatLng(
                     currentLocation.getLatitude(),
-                    currentLocation.getLongitude()
-            );
+                    currentLocation.getLongitude());
 
-            myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14));
+            myMap.moveCamera(
+                    CameraUpdateFactory.newLatLngZoom(myLocation, 14));
 
+            // USER LOCATION MARKER
+            myMap.addMarker(new MarkerOptions()
+                    .position(myLocation)
+                    .title("My Location")
+                    .icon(BitmapDescriptorFactory
+                            .defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
         }
 
-        // 🔥 LOAD ROOMS MARKERS
         loadRoomsOnMap();
 
 
+        // MARKER CLICK → ROOM DETAILS
         myMap.setOnMarkerClickListener(marker -> {
+            Room room = markerRoomMap.get(marker);
+            if (room == null) return false;
 
-            // Ignore your own location marker
-            if ("My Location".equals(marker.getTitle())) {
-                return false;
-            }
+            Intent intent = new Intent(
+                    LocationMap.this,
+                    RoomDetailsActivity.class);
 
-            Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
-            intent.putExtra("room_title", marker.getTitle());
-            intent.putExtra("room_info", marker.getSnippet());
-
+            intent.putExtra("room_id", room.getId());
             startActivity(intent);
-            return false; // keep default behavior
+            return true;
         });
     }
 
 
-
+// load map
     private void loadRoomsOnMap() {
         db.collection("rooms")
-                .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
+                .whereEqualTo("available", true)
+                .addSnapshotListener((snapshots, error) -> {
+                    if (error != null || snapshots == null) return;
+                    roomsList.clear();
+                    markerRoomMap.clear();
+                    myMap.clear();
 
-                    for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    for (QueryDocumentSnapshot doc : snapshots) {
 
-                        Double lat = doc.getDouble("latitude");
-                        Double lng = doc.getDouble("longitude");
-                        String title = doc.getString("title");
-                        Double price = doc.getDouble("price");
+                        Room room = doc.toObject(Room.class);
+                        room.setId(doc.getId());
 
-                        if (lat == null || lng == null) continue;
+                        if (room.getLatitude() == 0 || room.getLongitude() == 0)
+                            continue;
 
-                        LatLng roomLocation = new LatLng(lat, lng);
+                        LatLng roomLocation = new LatLng(
+                                room.getLatitude(),
+                                room.getLongitude());
 
-                        myMap.addMarker(new MarkerOptions()
-                                .position(roomLocation)
-                                .title(title)
-                                .snippet("Price: " + price)
-                                .icon(BitmapDescriptorFactory
-                                        .defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                        Marker marker = myMap.addMarker(
+                                new MarkerOptions()
+                                        .position(roomLocation)
+                                        .title(room.getTitle())
+                                        .snippet("Price: $" + room.getPrice())
+                                        .icon(BitmapDescriptorFactory
+                                                .defaultMarker(BitmapDescriptorFactory.HUE_RED))
                         );
+
+                        markerRoomMap.put(marker, room);
                     }
-                })
-                .addOnFailureListener(e ->
-                        Toast.makeText(this,
-                                "Failed to load rooms", Toast.LENGTH_SHORT).show()
-                );
+                });
     }
 
 
-    // 🔄 Permission result
+    // REFRESH MAP WHEN RETURNING
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (myMap != null && shouldRefreshRooms) {
+            loadRoomsOnMap();
+            shouldRefreshRooms = false;
+        }
+    }
+
+    // PERMISSION RESULT
     @Override
     public void onRequestPermissionsResult(
             int requestCode,
@@ -265,10 +270,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         if (requestCode == PERMISSION_FINE_CODE) {
             if (grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                getLastLocation();
-
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {getLastLocation();
             } else {
                 Toast.makeText(
                         this,

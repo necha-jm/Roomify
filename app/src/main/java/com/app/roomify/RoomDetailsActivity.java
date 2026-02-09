@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -35,11 +36,14 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
         // Get roomId safely
         roomId = getIntent().getStringExtra("room_id");
+        Log.d("ROOM_DETAILS_DEBUG", "Received room_id: " + roomId); // ✅ DEBUG
+
         if (roomId == null || roomId.isEmpty()) {
             Toast.makeText(this, "Room ID missing!", Toast.LENGTH_SHORT).show();
             finish(); // close activity safely
             return;
         }
+
 
         // Initialize views
         tvTitle = findViewById(R.id.tvRoomTitle);
