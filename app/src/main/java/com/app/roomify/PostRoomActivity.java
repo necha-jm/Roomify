@@ -40,6 +40,7 @@ public class PostRoomActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        LocaleHelper.loadLocale(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_room);
 

@@ -40,4 +40,10 @@
     <color name="warning_orange">#FF9800</color>
     <color name="error_red">#F44336</color>
 
+    <color name="surface">#F5F5F5</color>
+    <color name="secondary">#625B71</color>
+    <color name="tertiary">#7D5260</color>
+    <color name="chip_background">#F3EDF7</color>
+    <color name="bottom_sheet_handle">#B0B0B0</color>
+
 </resources>

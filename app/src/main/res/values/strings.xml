@@ -1,4 +1,15 @@
 <resources>
     <string name="app_name">Roomify</string>
     <string name="API_KEY">AIzaSyB43z_ebDCKx_yWufJVpFyGPhwY1uQvn_s</string>
+    <string name="bus_station_ticket_office">Bus station ticket office</string>
+    <string name="ally_s_bus_office">Ally\'s Bus Office</string>
+    <string name="university_of_dar_es_salaam">University of Dar es Salaam</string>
+    <string name="udsm_main_campus">UDSM Main Campus</string>
+    <string name="recent_searches">Recent Searches</string>
+    <string name="language">Language</string>
+    <string name="add_room">Add Room</string>
+    <string name="apartment">Apartment</string>
+    <string name="quick_actions">Quick Actions</string>
+    <string name="swahili">Swahili</string>
+    <string name="no_rooms_available" />
 </resources>
