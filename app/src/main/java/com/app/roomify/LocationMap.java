@@ -7,11 +7,14 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationManager;
+import android.location.LocationRequest;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -30,7 +33,10 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -336,7 +342,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         MarkerOptions markerOptions = new MarkerOptions()
                 .position(latLng)
                 .title("Searched: " + title)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
 
         searchMarker = myMap.addMarker(markerOptions);
         if (searchMarker != null) {
@@ -386,26 +392,53 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                     if (location != null) {
                         currentLocation = location;
                         Log.d(TAG, "Location obtained: " + location.getLatitude() + ", " + location.getLongitude());
-
-                        // Initialize map
-                        SupportMapFragment mapFragment = (SupportMapFragment)
-                                getSupportFragmentManager().findFragmentById(R.id.map);
-                        if (mapFragment != null) {
-                            mapFragment.getMapAsync(this);
-                        } else {
-                            Log.e(TAG, "Map fragment not found");
-                            Toast.makeText(this, "Map not available", Toast.LENGTH_SHORT).show();
-                        }
+                        initMap();
                     } else {
-                        Toast.makeText(this, "Turn on GPS to get your location", Toast.LENGTH_LONG).show();
-                        Log.d(TAG, "Location is null");
+                        // Try to request new location
+                        requestNewLocation();
                     }
                 })
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Failed to get location: " + e.getMessage());
                     Toast.makeText(this, "Failed to get location", Toast.LENGTH_SHORT).show();
+                    initMap(); // Load map with default location
                 });
     }
+
+    private void initMap() {
+        SupportMapFragment mapFragment = (SupportMapFragment)
+                getSupportFragmentManager().findFragmentById(R.id.map);
+        if (mapFragment != null) {
+            mapFragment.getMapAsync(this);
+        } else {
+            Log.e(TAG, "Map fragment not found");
+            Toast.makeText(this, "Map not available", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void requestNewLocation() {
+        fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener(location -> {
+                    if (location != null) {
+                        currentLocation = location;
+                        Log.d(TAG, "New location obtained: " + location.getLatitude() + ", " + location.getLongitude());
+                        if (myMap != null) {
+                            LatLng myLocation = new LatLng(location.getLatitude(), location.getLongitude());
+                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14f));
+                            if (currentLocationMarker != null) currentLocationMarker.remove();
+                            currentLocationMarker = myMap.addMarker(new MarkerOptions()
+                                    .position(myLocation)
+                                    .title("My Location")
+                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+                        }
+                    } else {
+                        Toast.makeText(this, "Unable to get current location", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .addOnFailureListener(e -> Log.e(TAG, "Failed to get new location: " + e.getMessage()));
+    }
+
 
     private void promptEnableLocation() {
         new AlertDialog.Builder(this)
@@ -468,7 +501,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             currentLocationMarker = myMap.addMarker(new MarkerOptions()
                     .position(defaultLocation)
                     .title("My Location")
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
         } else {
             // Default to Dar es Salaam
             defaultLocation = new LatLng(-6.7924, 39.2083);
@@ -559,13 +592,18 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                                     room.getLatitude(),
                                     room.getLongitude());
 
+                            Bitmap originalBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_apartment);
+
+                            // Resize (width, height in pixels)
+                            Bitmap resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, 40, 40, false);
+
                             Marker marker = myMap.addMarker(
                                     new MarkerOptions()
                                             .position(roomLocation)
                                             .title(room.getTitle())
                                             .snippet("Price: $" + room.getPrice())
-                                            .icon(BitmapDescriptorFactory
-                                                    .defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                                            .icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap))
+
                             );
 
                             if (marker != null) {

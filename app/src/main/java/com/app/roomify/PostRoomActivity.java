@@ -10,6 +10,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,6 +22,8 @@ import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -29,8 +32,11 @@ public class PostRoomActivity extends AppCompatActivity {
 
     private static final String TAG = "PostRoomActivity";
     private MapView mapView;
-    private EditText etTitle, etDescription, etPrice;
+    private EditText etTitle, etDescription, etPrice,etContactEmail,etContactPhone,etRoomsCount,etBathroomsCount,etArea
+            ,etRules;
     private TextView tvSelectedAddress;
+
+    private   Spinner spinnerPropertyType;
 
     private double selectedLatitude = 0.0;
     private double selectedLongitude = 0.0;
@@ -38,11 +44,23 @@ public class PostRoomActivity extends AppCompatActivity {
     private FirebaseAuth auth;
     private FirebaseFirestore db;
 
+    private List<String> selectedAmenities;
+    private List<String> uploadedImageUrls;
+    private String uploadedVideoUrl;
+    private String uploadedContractUrl;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         LocaleHelper.loadLocale(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_room);
+
+        selectedAmenities = new ArrayList<>();
+        uploadedImageUrls = new ArrayList<>();
+        uploadedVideoUrl = "";
+        uploadedContractUrl = "";
+
 
         Log.d(TAG, "onCreate called");
 
@@ -60,6 +78,13 @@ public class PostRoomActivity extends AppCompatActivity {
         etPrice = findViewById(R.id.etPrice);
         tvSelectedAddress = findViewById(R.id.tvSelectedAddress);
         Button btnSubmit = findViewById(R.id.btnSubmitRoom);
+        etContactEmail = findViewById(R.id.etContactEmail);
+        etContactPhone = findViewById(R.id.etContactPhone);
+        etRoomsCount = findViewById(R.id.etRoomsCount);
+        etBathroomsCount = findViewById(R.id.etBathroomsCount);
+        etArea = findViewById(R.id.etArea);
+        etRules = findViewById(R.id.etRules);
+        spinnerPropertyType =  findViewById(R.id.spinnerPropertyType);
 
         // Setup map
         setupMap();
@@ -236,6 +261,7 @@ public class PostRoomActivity extends AppCompatActivity {
 
         // Create Room object
         Room room = new Room();
+
         String roomId = UUID.randomUUID().toString();
         room.setId(roomId);
         room.setTitle(title);
@@ -247,6 +273,20 @@ public class PostRoomActivity extends AppCompatActivity {
         room.setPostedBy(currentUser);
         room.setAvailable(true);
         room.setCreatedAt(System.currentTimeMillis());
+
+// NEW FIELDS
+        room.setRoomsCount(Integer.parseInt(etRoomsCount.getText().toString()));
+        room.setBathroomsCount(Integer.parseInt(etBathroomsCount.getText().toString()));
+        room.setArea(Double.parseDouble(etArea.getText().toString()));
+        room.setPropertyType(spinnerPropertyType.getSelectedItem().toString());
+        room.setRules(Arrays.asList(etRules.getText().toString().split(","))); // comma-separated rules
+        room.setAmenities(selectedAmenities); // List<String> from checkboxes
+        room.setImages(uploadedImageUrls);  // List<String> after uploading images to API
+        room.setVideoUrl(uploadedVideoUrl); // String after uploading video to API
+        room.setContractUrl(uploadedContractUrl); // String after uploading PDF to API
+        room.setContactPhone(etContactPhone.getText().toString());
+        room.setContactEmail(etContactEmail.getText().toString());
+
 
 
 

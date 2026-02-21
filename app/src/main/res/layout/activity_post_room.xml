@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -17,19 +16,18 @@
             android:textStyle="bold"
             android:layout_marginBottom="16dp" />
 
+        <!-- Map -->
         <org.osmdroid.views.MapView
             android:id="@+id/mapViewPost"
             android:layout_width="match_parent"
             android:layout_height="300dp"
-            android:layout_marginBottom="16dp" />
-
+            android:layout_marginBottom="8dp" />
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Tap on map to select location"
             android:textStyle="italic"
-            android:layout_marginBottom="8dp" />
-
+            android:layout_marginBottom="4dp" />
         <TextView
             android:id="@+id/tvSelectedAddress"
             android:layout_width="match_parent"
@@ -38,6 +36,7 @@
             android:textStyle="bold"
             android:layout_marginBottom="16dp" />
 
+        <!-- Room Details -->
         <EditText
             android:id="@+id/etRoomTitle"
             android:layout_width="match_parent"
@@ -49,7 +48,7 @@
             android:id="@+id/etDescription"
             android:layout_width="match_parent"
             android:layout_height="100dp"
-            android:hint="Description*"
+            android:hint="@string/description"
             android:inputType="textMultiLine"
             android:gravity="top"
             android:layout_marginBottom="8dp" />
@@ -58,11 +57,121 @@
             android:id="@+id/etPrice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Price per month*"
+            android:hint="@string/price_per_month"
             android:inputType="numberDecimal"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Rooms & Bathrooms -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <EditText
+                android:id="@+id/etRoomsCount"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:hint="@string/rooms"
+                android:inputType="number" />
+
+            <EditText
+                android:id="@+id/etBathroomsCount"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:hint="Bathrooms*"
+                android:inputType="number"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <!-- Area -->
+        <EditText
+            android:id="@+id/etArea"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Area in m²*"
+            android:inputType="numberDecimal"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Property Type -->
+        <Spinner
+            android:id="@+id/spinnerPropertyType"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Amenities (can use multi-select or checkboxes in code) -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select Amenities"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+        <LinearLayout
+            android:id="@+id/layoutAmenities"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+            <!-- Dynamically add CheckBoxes in code -->
+        </LinearLayout>
+
+        <!-- Rules -->
+        <EditText
+            android:id="@+id/etRules"
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:hint="@string/rules_e_g_no_smoking_no_pets"
+            android:inputType="textMultiLine"
+            android:gravity="top"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Contact Phone -->
+        <EditText
+            android:id="@+id/etContactPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Contact Phone*"
+            android:inputType="phone"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Contact Email -->
+        <EditText
+            android:id="@+id/etContactEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Contact Email"
+            android:inputType="textEmailAddress"
             android:layout_marginBottom="16dp" />
 
 
+        <!-- Images -->
+        <Button
+            android:id="@+id/btnAddImages"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add Images"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Video -->
+        <Button
+            android:id="@+id/btnAddVideo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add Short Video"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Contract -->
+        <Button
+            android:id="@+id/btnAddContract"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Upload Contract (Mkataba)"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Submit -->
         <Button
             android:id="@+id/btnSubmitRoom"
             android:layout_width="match_parent"
