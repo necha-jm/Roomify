@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application
+        android:name=".MyApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -21,6 +22,19 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Roomify">
+        <activity
+            android:name=".NoInternetActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".NetworkReceiver"
+            android:enabled="true"
+            android:exported="false"></receiver>
+        <receiver
+            android:name=".RoomReceiver"
+            android:enabled="true"
+            android:exported="false"></receiver>
+
         <activity
             android:name=".LocationMap"
             android:exported="false" />

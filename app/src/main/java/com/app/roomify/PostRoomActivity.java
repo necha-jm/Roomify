@@ -49,6 +49,8 @@ public class PostRoomActivity extends AppCompatActivity {
     private String uploadedVideoUrl;
     private String uploadedContractUrl;
 
+    private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -308,7 +310,12 @@ public class PostRoomActivity extends AppCompatActivity {
                             Toast.LENGTH_SHORT
                     ).show();
 
-                    // ✅ Navigate using ONLY roomId
+                    // STEP 1: SEND BROADCAST
+                    Intent broadcastIntent = new Intent(ACTION_NEW_ROOM);
+                    sendBroadcast(broadcastIntent);
+
+
+                    // Navigate using ONLY roomId
                     navigateToRoomDetails(roomId);
                 })
                 .addOnFailureListener(e -> {

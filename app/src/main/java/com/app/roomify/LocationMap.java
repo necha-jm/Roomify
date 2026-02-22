@@ -4,8 +4,10 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -15,6 +17,8 @@ import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationManager;
 import android.location.LocationRequest;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -95,13 +99,23 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private boolean shouldRefreshRooms = true;
     private boolean isMapReady = false;
 
+    private BroadcastReceiver roomReceiver;
+    private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         LocaleHelper.loadLocale(this);
         setContentView(R.layout.activity_location_map);
 
+
         Log.d(TAG, "onCreate started");
+
+        //receiver registering
+        RoomReceiver roomReceiver = new RoomReceiver();
+
+        IntentFilter filter = new IntentFilter(RoomReceiver.ACTION_NEW_ROOM);
+        ContextCompat.registerReceiver(this, roomReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance();
@@ -330,6 +344,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             Toast.makeText(this, "Error searching location", Toast.LENGTH_SHORT).show();
         }
     }
+
+
+
 
     private void addSearchResultMarker(LatLng latLng, String title) {
         if (myMap == null) return;
