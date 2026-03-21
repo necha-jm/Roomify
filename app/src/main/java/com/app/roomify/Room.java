@@ -24,16 +24,12 @@ public class Room {
     private String propertyType;        // Apartment, single room, studio, etc.
     private List<String> rules;         // Rules for the tenant
     private long createdAt;             // Timestamp of creation
-
-    // New: Contact info
-    private String contactPhone;
-    private String contactEmail;
+    private String contactPhone;        // Owner contact phone
+    private String contactEmail;         // Owner contact email
 
     // Empty constructor for Firebase or ORM
     public Room() {
     }
-
-
 
     // Full constructor
     public Room(String id, String title, String description, double price,
@@ -41,7 +37,8 @@ public class Room {
                 String postedBy, boolean isAvailable, List<String> amenities,
                 List<String> images, String videoUrl, String contractUrl,
                 int roomsCount, int bathroomsCount, double area,
-                String propertyType, List<String> rules, long createdAt, String contactEmail) {
+                String propertyType, List<String> rules, long createdAt,
+                String contactPhone, String contactEmail) {
         this.id = id;
         this.title = title;
         this.description = description;
@@ -50,11 +47,9 @@ public class Room {
         this.longitude = longitude;
         this.address = address;
         this.postedBy = postedBy;
-        this.contactEmail = contactEmail;
         this.postedDate = new Date();
         this.isAvailable = isAvailable;
         this.amenities = amenities;
-
         this.images = images;
         this.videoUrl = videoUrl;
         this.contractUrl = contractUrl;
@@ -64,19 +59,13 @@ public class Room {
         this.propertyType = propertyType;
         this.rules = rules;
         this.createdAt = createdAt;
+        this.contactPhone = contactPhone;
+        this.contactEmail = contactEmail;
     }
 
     // Getters and Setters
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
-
-    public void setContactPhone(String contactPhone) {
-        this.contactPhone = contactPhone;
-    }
-
-    public void setContactEmail(String contactEmail) {
-        this.contactEmail = contactEmail;
-    }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
@@ -134,4 +123,20 @@ public class Room {
 
     public long getCreatedAt() { return createdAt; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
+
+    public String getContactPhone() { return contactPhone; }
+    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
+
+    public String getContactEmail() { return contactEmail; }
+    public void setContactEmail(String contactEmail) { this.contactEmail = contactEmail; }
+
+    // Helper methods for backward compatibility
+    public List<String> getImageUrls() { return images; }
+    public void setImageUrls(List<String> imageUrls) { this.images = imageUrls; }
+
+    public int getBedrooms() { return roomsCount; }
+    public void setBedrooms(int bedrooms) { this.roomsCount = bedrooms; }
+
+    public int getBathrooms() { return bathroomsCount; }
+    public void setBathrooms(int bathrooms) { this.bathroomsCount = bathrooms; }
 }

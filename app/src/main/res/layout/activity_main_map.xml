@@ -16,7 +16,7 @@
         android:layout_alignParentBottom="true"
         android:layout_margin="16dp"
         android:src="@drawable/ic_add"
-        android:contentDescription="Add Room" />
+        android:contentDescription="@string/add_room2" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMyLocation"
@@ -27,6 +27,6 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
         android:src="@drawable/ic_my_location"
-        android:contentDescription="My Location" />
+        android:contentDescription="@string/my_location1" />
 
 </RelativeLayout>

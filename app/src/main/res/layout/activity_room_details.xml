@@ -34,19 +34,6 @@
                 android:orientation="horizontal"
                 android:padding="4dp" />
 
-            <!-- Back Button -->
-            <ImageButton
-                android:id="@+id/btnBack"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_alignParentStart="true"
-                android:layout_alignParentTop="true"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/rounded_button_bg"
-                android:contentDescription="Back"
-                android:scaleType="center"
-                android:src="@drawable/ic_back" />
 
             <!-- Favorite Button -->
             <ImageButton
@@ -58,7 +45,7 @@
                 android:layout_marginEnd="16dp"
                 android:layout_marginTop="16dp"
                 android:background="@drawable/rounded_button_bg"
-                android:contentDescription="Favorite"
+                android:contentDescription="@string/favorite"
                 android:scaleType="center"/>
 
         </RelativeLayout>
@@ -89,7 +76,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Luxury Apartment"
+                        android:text="@string/luxury_apartment"
                         android:textColor="@color/black"
                         android:textSize="24sp"
                         android:textStyle="bold" />
@@ -98,7 +85,7 @@
                         android:id="@+id/tvRoomPrice"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$1500"
+                        android:text="@string/_1500"
                         android:textColor="@color/primary"
                         android:textSize="24sp"
                         android:textStyle="bold" />
@@ -117,14 +104,14 @@
                         android:layout_height="20dp"
                         android:layout_marginEnd="8dp"
                         android:src="@drawable/ic_location"
-                        android:tint="@color/grey" />
+                        app:tint="@color/grey" />
 
                     <TextView
                         android:id="@+id/tvRoomAddress"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="123 Main Street, New York, NY"
+                        android:text="@string/_123_main_street_new_york_ny"
                         android:textColor="@color/grey"
                         android:textSize="14sp" />
 
@@ -139,7 +126,7 @@
                     android:background="@drawable/status_available_bg"
                     android:paddingHorizontal="12dp"
                     android:paddingVertical="4dp"
-                    android:text="AVAILABLE"
+                    android:text="@string/available"
                     android:textColor="@color/white"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -165,13 +152,13 @@
                             android:layout_height="24dp"
                             android:layout_marginEnd="8dp"
                             android:src="@drawable/ic_bed"
-                            android:tint="@color/primary" />
+                            app:tint="@color/primary" />
 
                         <TextView
                             android:id="@+id/tvBedrooms"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="2 Bedrooms"
+                            android:text="@string/_2_bedrooms"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -188,13 +175,13 @@
                             android:layout_height="24dp"
                             android:layout_marginEnd="8dp"
                             android:src="@drawable/ic_bath"
-                            android:tint="@color/primary" />
+                            app:tint="@color/primary" />
 
                         <TextView
                             android:id="@+id/tvBathrooms"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="1 Bathroom"
+                            android:text="@string/_1_bathroom"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -210,13 +197,13 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:layout_marginEnd="8dp"
-                            android:tint="@color/primary" />
+                            app:tint="@color/primary" />
 
                         <TextView
                             android:id="@+id/tvArea"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="850 sq ft"
+                            android:text="@string/_850_sq_ft"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -233,13 +220,13 @@
                             android:layout_height="24dp"
                             android:layout_marginEnd="8dp"
                             android:src="@drawable/ic_calendar"
-                            android:tint="@color/primary" />
+                            app:tint="@color/primary" />
 
                         <TextView
                             android:id="@+id/tvPostedDate"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="2 days ago"
+                            android:text="@string/_2_days_ago"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -257,7 +244,7 @@
                     android:id="@+id/tvDescriptionLabel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Description"
+                    android:text="@string/description11"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -267,7 +254,7 @@
                     android:id="@+id/tvRoomDescription"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Spacious 2-bedroom apartment with modern amenities..."
+                    android:text="@string/spacious_2_bedroom_apartment_with_modern_amenities"
                     android:textColor="@color/grey_dark"
                     android:textSize="14sp"
                     android:lineSpacingExtra="4dp" />
@@ -294,7 +281,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Amenities"
+                    android:text="@string/amenities1"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -339,7 +326,7 @@
                     android:layout_centerHorizontal="true"
                     android:layout_marginBottom="16dp"
                     android:backgroundTint="@color/primary"
-                    android:text="Get Directions"
+                    android:text="@string/get_directions"
                     android:textColor="@color/white"
                     style="@style/Widget.MaterialComponents.Button" />
 
@@ -365,7 +352,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Contact Owner"
+                    android:text="@string/contact_owner"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -396,7 +383,7 @@
                             android:id="@+id/tvOwnerName"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="John Doe"
+                            android:text="@string/john_doe"
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
@@ -404,7 +391,7 @@
                             android:id="@+id/tvOwnerRating"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="⭐ 4.8 (24 reviews)"
+                            android:text="@string/_4_8_24_reviews"
                             android:textColor="@color/grey"
                             android:textSize="14sp" />
 
@@ -412,7 +399,7 @@
                             android:id="@+id/tvMemberSince"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Member since 2023"
+                            android:text="@string/member_since_2023"
                             android:textColor="@color/grey"
                             android:textSize="12sp" />
 
@@ -434,7 +421,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="8dp"
                         android:backgroundTint="@color/primary"
-                        android:text="Call"
+                        android:text="@string/call"
                         android:textColor="@color/white"
                         android:drawableStart="@drawable/ic_call"
                         android:drawablePadding="8dp"
@@ -446,7 +433,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:backgroundTint="@color/white"
-                        android:text="Message"
+                        android:text="@string/message"
                         android:textColor="@color/primary"
                         android:drawableStart="@drawable/ic_sms"
                         android:drawablePadding="8dp"
@@ -471,7 +458,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:backgroundTint="@color/primary"
-                android:text="Book Now / Request Visit"
+                android:text="@string/book_now_request_visit"
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 android:textStyle="bold"

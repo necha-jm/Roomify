@@ -16,10 +16,12 @@ import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationManager;
-import android.location.LocationRequest;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -29,6 +31,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -36,19 +39,28 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
 import com.google.android.gms.location.Priority;
+import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
@@ -66,12 +78,22 @@ import java.util.Map;
 public class LocationMap extends AppCompatActivity implements OnMapReadyCallback {
 
     private static final int PERMISSION_FINE_CODE = 100;
+    private static final int REQUEST_CHECK_SETTINGS = 101;
+    private static final int LOCATION_TIMEOUT = 10000; // 10 seconds
     private static final String TAG = "LocationMap";
 
     private GoogleMap myMap;
+
+    private BroadcastReceiver roomReceiver;
+    private BroadcastReceiver gpsStatusReceiver;
     private Location currentLocation;
     private FusedLocationProviderClient fusedLocationProviderClient;
     private FirebaseFirestore db;
+
+    private boolean isFirstLocationUpdate = true;
+    private boolean isMapReady = false;
+    private boolean shouldRefreshRooms = true;
+    private boolean isLocationRequestActive = false;
 
     // UI Elements
     private MaterialCardView searchCard;
@@ -88,6 +110,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private LinearLayout bottomSheet;
     private BottomSheetBehavior<LinearLayout> bottomSheetBehavior;
 
+    private LocationCallback locationCallback;
+    private LocationRequest locationRequest;
+
     // Map markers
     private Marker currentLocationMarker;
     private Marker searchMarker;
@@ -96,10 +121,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private final List<Room> roomsList = new ArrayList<>();
     private final Map<Marker, Room> markerRoomMap = new HashMap<>();
 
-    private boolean shouldRefreshRooms = true;
-    private boolean isMapReady = false;
+    TextView contact;
 
-    private BroadcastReceiver roomReceiver;
     private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
 
     @Override
@@ -108,14 +131,21 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         LocaleHelper.loadLocale(this);
         setContentView(R.layout.activity_location_map);
 
+        contact = findViewById(R.id.contact);
+
+        contact.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(LocationMap.this, ContactActivity.class );
+                startActivity(i);
+
+            }
+        });
 
         Log.d(TAG, "onCreate started");
 
-        //receiver registering
-        RoomReceiver roomReceiver = new RoomReceiver();
-
-        IntentFilter filter = new IntentFilter(RoomReceiver.ACTION_NEW_ROOM);
-        ContextCompat.registerReceiver(this, roomReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        // Initialize receivers
+        initializeReceivers();
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance();
@@ -134,6 +164,49 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
 
         Log.d(TAG, "onCreate completed");
+    }
+
+    private void initializeReceivers() {
+        // Room receiver
+        roomReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (ACTION_NEW_ROOM.equals(intent.getAction())) {
+                    Log.d(TAG, "New room added, refreshing map");
+                    shouldRefreshRooms = true;
+                    if (myMap != null) {
+                        loadRoomsOnMap();
+                    }
+                }
+            }
+        };
+
+        // GPS status receiver
+        gpsStatusReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (LocationManager.PROVIDERS_CHANGED_ACTION.equals(intent.getAction())) {
+                    boolean isGpsEnabled = isLocationEnabled();
+                    Log.d(TAG, "GPS status changed: " + (isGpsEnabled ? "Enabled" : "Disabled"));
+
+                    if (isGpsEnabled && currentLocation == null && !isLocationRequestActive) {
+                        // GPS just turned on, request location
+                        if (ActivityCompat.checkSelfPermission(LocationMap.this,
+                                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            getLastLocationWithTimeout();
+                            startLocationUpdates();
+                        }
+                    }
+                }
+            }
+        };
+
+        // Register receivers
+        IntentFilter roomFilter = new IntentFilter(ACTION_NEW_ROOM);
+        ContextCompat.registerReceiver(this, roomReceiver, roomFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+
+        IntentFilter gpsFilter = new IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION);
+        registerReceiver(gpsStatusReceiver, gpsFilter);
     }
 
     private void initializeViews() {
@@ -245,23 +318,21 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         LatLng myLocation = new LatLng(
                                 currentLocation.getLatitude(),
                                 currentLocation.getLongitude());
-                        myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14f));
+                        myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 16f));
                     } else {
-                        getLastLocation();
+                        getLastLocationWithTimeout();
                     }
                 });
             }
 
-            // Settings button - FIXED: Don't use Activity.class
+            // Settings button
             if (btnSettings != null) {
                 btnSettings.setOnClickListener(v -> {
-                    try {
-                        // Replace with your actual SettingsActivity
-                        // startActivity(new Intent(LocationMap.this, SettingsActivity.class));
-                        Toast.makeText(this, "Settings will be implemented soon", Toast.LENGTH_SHORT).show();
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error with settings: " + e.getMessage());
-                    }
+                    Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+
                 });
             }
 
@@ -318,43 +389,79 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void performGeocodeSearch(String query) {
-        if (!Geocoder.isPresent()) {
-            Toast.makeText(this, "Geocoder service not available", Toast.LENGTH_SHORT).show();
+        if (!isNetworkAvailable()) {
+            Toast.makeText(this, "No internet connection", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-        try {
-            List<Address> addressList = geocoder.getFromLocationName(query, 1);
-            if (addressList != null && !addressList.isEmpty()) {
-                Address address = addressList.get(0);
-                LatLng latLng = new LatLng(
-                        address.getLatitude(),
-                        address.getLongitude());
+        new Thread(() -> {
+            int retryCount = 0;
+            int maxRetries = 3;
 
-                if (myMap != null) {
-                    myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 14));
-                    addSearchResultMarker(latLng, address.getAddressLine(0));
+            while (retryCount < maxRetries) {
+                try {
+                    Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+                    List<Address> addressList = geocoder.getFromLocationName(query, 1);
+
+                    if (addressList != null && !addressList.isEmpty()) {
+                        Address address = addressList.get(0);
+                        LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+
+                        runOnUiThread(() -> {
+                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
+                            addSearchResultMarker(latLng, address.getAddressLine(0));
+                        });
+                        return;
+                    } else {
+                        retryCount++;
+                        if (retryCount < maxRetries) {
+                            Thread.sleep(1000);
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "Geocoder error: " + e.getMessage());
+                    retryCount++;
+                    if (retryCount < maxRetries) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
                 }
-            } else {
-                Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show();
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Geocoder error: " + e.getMessage());
-            Toast.makeText(this, "Error searching location", Toast.LENGTH_SHORT).show();
-        }
+
+            runOnUiThread(() ->
+                    Toast.makeText(this, "Search failed after multiple attempts", Toast.LENGTH_SHORT).show()
+            );
+        }).start();
     }
 
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager =
+                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
 
+        if (connectivityManager != null) {
+            NetworkCapabilities capabilities =
+                    connectivityManager.getNetworkCapabilities(connectivityManager.getActiveNetwork());
 
+            return capabilities != null && (
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            );
+        }
+        return false;
+    }
 
     private void addSearchResultMarker(LatLng latLng, String title) {
         if (myMap == null) return;
 
-        // Clear previous search marker
-        if (searchMarker != null) {
-            searchMarker.remove();
-        }
+        clearSearchMarker();
 
         MarkerOptions markerOptions = new MarkerOptions()
                 .position(latLng)
@@ -381,7 +488,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
     }
 
-    // REQUEST LOCATION PERMISSION
     private void requestLocationPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -392,12 +498,24 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                     PERMISSION_FINE_CODE
             );
         } else {
-            getLastLocation();
+            getLastLocationWithTimeout();
         }
     }
 
-    // GET USER LOCATION
-    private void getLastLocation() {
+    private void getLastLocationWithTimeout() {
+        isLocationRequestActive = true;
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final boolean[] locationReceived = {false};
+
+        handler.postDelayed(() -> {
+            isLocationRequestActive = false;
+            if (!locationReceived[0]) {
+                Log.d(TAG, "Location timeout. Using default location.");
+                Toast.makeText(this, "Location timeout. Using default location.", Toast.LENGTH_SHORT).show();
+                initMap();
+            }
+        }, LOCATION_TIMEOUT);
+
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             requestLocationPermission();
@@ -406,19 +524,63 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         fusedLocationProviderClient.getLastLocation()
                 .addOnSuccessListener(location -> {
+                    locationReceived[0] = true;
+                    isLocationRequestActive = false;
                     if (location != null) {
                         currentLocation = location;
                         Log.d(TAG, "Location obtained: " + location.getLatitude() + ", " + location.getLongitude());
                         initMap();
                     } else {
-                        // Try to request new location
-                        requestNewLocation();
+                        requestNewLocationWithTimeout();
                     }
                 })
                 .addOnFailureListener(e -> {
+                    locationReceived[0] = true;
+                    isLocationRequestActive = false;
                     Log.e(TAG, "Failed to get location: " + e.getMessage());
                     Toast.makeText(this, "Failed to get location", Toast.LENGTH_SHORT).show();
-                    initMap(); // Load map with default location
+                    initMap();
+                });
+    }
+
+    @SuppressLint("MissingPermission")
+    private void requestNewLocationWithTimeout() {
+        isLocationRequestActive = true;
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final boolean[] locationReceived = {false};
+
+        handler.postDelayed(() -> {
+            isLocationRequestActive = false;
+            if (!locationReceived[0]) {
+                Log.d(TAG, "New location timeout");
+                initMap();
+            }
+        }, LOCATION_TIMEOUT);
+
+        fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener(location -> {
+                    locationReceived[0] = true;
+                    isLocationRequestActive = false;
+                    if (location != null) {
+                        currentLocation = location;
+                        Log.d(TAG, "New location obtained: " + location.getLatitude() + ", " + location.getLongitude());
+                        if (myMap != null) {
+                            LatLng myLocation = new LatLng(location.getLatitude(), location.getLongitude());
+                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 16f));
+                            updateCurrentLocationMarker(location);
+                        } else {
+                            initMap();
+                        }
+                    } else {
+                        Toast.makeText(this, "Unable to get current location", Toast.LENGTH_SHORT).show();
+                        initMap();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    locationReceived[0] = true;
+                    isLocationRequestActive = false;
+                    Log.e(TAG, "Failed to get new location: " + e.getMessage());
+                    initMap();
                 });
     }
 
@@ -433,30 +595,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private void requestNewLocation() {
-        fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                .addOnSuccessListener(location -> {
-                    if (location != null) {
-                        currentLocation = location;
-                        Log.d(TAG, "New location obtained: " + location.getLatitude() + ", " + location.getLongitude());
-                        if (myMap != null) {
-                            LatLng myLocation = new LatLng(location.getLatitude(), location.getLongitude());
-                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14f));
-                            if (currentLocationMarker != null) currentLocationMarker.remove();
-                            currentLocationMarker = myMap.addMarker(new MarkerOptions()
-                                    .position(myLocation)
-                                    .title("My Location")
-                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
-                        }
-                    } else {
-                        Toast.makeText(this, "Unable to get current location", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .addOnFailureListener(e -> Log.e(TAG, "Failed to get new location: " + e.getMessage()));
-    }
-
-
     private void promptEnableLocation() {
         new AlertDialog.Builder(this)
                 .setTitle("Enable Location")
@@ -468,14 +606,12 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 })
                 .setNegativeButton("Cancel", (dialog, which) -> {
                     Toast.makeText(this, "Location is required for map features", Toast.LENGTH_SHORT).show();
-                    // Still load map without location
                     loadMapWithoutLocation();
                 })
                 .show();
     }
 
     private void loadMapWithoutLocation() {
-        // Load map with default location (Dar es Salaam)
         SupportMapFragment mapFragment = (SupportMapFragment)
                 getSupportFragmentManager().findFragmentById(R.id.map);
         if (mapFragment != null) {
@@ -491,47 +627,132 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
     }
 
-    // MAP READY
+    private void startLocationUpdates() {
+        try {
+            locationRequest = LocationRequest.create();
+            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+            locationRequest.setInterval(10000);
+            locationRequest.setFastestInterval(5000);
+            locationRequest.setSmallestDisplacement(10);
+
+            locationCallback = new LocationCallback() {
+                @Override
+                public void onLocationResult(@NonNull LocationResult locationResult) {
+                    if (locationResult == null) return;
+
+                    for (Location location : locationResult.getLocations()) {
+                        if (location == null) continue;
+
+                        if (location.hasAccuracy() && location.getAccuracy() < 50) {
+                            updateCurrentLocation(location);
+                            break;
+                        } else if (currentLocation == null) {
+                            updateCurrentLocation(location);
+                        }
+                    }
+                }
+            };
+
+            checkLocationSettingsAndStartUpdates();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting location updates: " + e.getMessage());
+        }
+    }
+
+    private void updateCurrentLocation(Location location) {
+        if (currentLocation == null || location.getTime() > currentLocation.getTime()) {
+            currentLocation = location;
+            runOnUiThread(() -> updateCurrentLocationMarker(location));
+        }
+    }
+
+    private void updateCurrentLocationMarker(Location location) {
+        if (myMap == null) return;
+
+        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+
+        if (currentLocationMarker == null) {
+            currentLocationMarker = myMap.addMarker(
+                    new MarkerOptions()
+                            .position(latLng)
+                            .title("My Location")
+                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+            );
+        } else {
+            currentLocationMarker.setPosition(latLng);
+        }
+
+        if (isFirstLocationUpdate) {
+            myMap.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(latLng, 14f)
+            );
+            isFirstLocationUpdate = false;
+        }
+    }
+
+    private void checkLocationSettingsAndStartUpdates() {
+        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest);
+
+        SettingsClient client = LocationServices.getSettingsClient(this);
+        Task<LocationSettingsResponse> task = client.checkLocationSettings(builder.build());
+
+        task.addOnSuccessListener(this, locationSettingsResponse -> {
+            if (ActivityCompat.checkSelfPermission(this,
+                    Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                fusedLocationProviderClient.requestLocationUpdates(
+                        locationRequest,
+                        locationCallback,
+                        Looper.getMainLooper()
+                );
+            }
+        });
+
+        task.addOnFailureListener(this, e -> {
+            int statusCode = ((ApiException) e).getStatusCode();
+            switch (statusCode) {
+                case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                    try {
+                        ResolvableApiException resolvable = (ResolvableApiException) e;
+                        resolvable.startResolutionForResult(LocationMap.this, REQUEST_CHECK_SETTINGS);
+                    } catch (Exception sendEx) {
+                        Log.e(TAG, "Error showing location settings dialog: " + sendEx.getMessage());
+                    }
+                    break;
+                case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                    Toast.makeText(this, "Location settings cannot be changed", Toast.LENGTH_SHORT).show();
+                    break;
+            }
+        });
+    }
+
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
         Log.d(TAG, "Map is ready");
         myMap = googleMap;
         isMapReady = true;
 
-        // Enable location layer if permission granted
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             myMap.setMyLocationEnabled(true);
             myMap.getUiSettings().setMyLocationButtonEnabled(false);
         }
 
-        // Set default location if currentLocation is null
         LatLng defaultLocation;
         if (currentLocation != null) {
             defaultLocation = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
-
-            // Add custom user location marker
-            if (currentLocationMarker != null) {
-                currentLocationMarker.remove();
-            }
-
-            currentLocationMarker = myMap.addMarker(new MarkerOptions()
-                    .position(defaultLocation)
-                    .title("My Location")
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+            updateCurrentLocationMarker(currentLocation);
         } else {
-            // Default to Dar es Salaam
             defaultLocation = new LatLng(-6.7924, 39.2083);
         }
 
-        myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 14));
+        myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 14f));
 
-        // Load rooms
         loadRoomsOnMap();
 
-        // MARKER CLICK → ROOM DETAILS
+        // FIXED: Enhanced marker click listener with backup tag lookup
         myMap.setOnMarkerClickListener(marker -> {
-            // Safely check marker equality
             boolean isCurrentLocation = currentLocationMarker != null &&
                     currentLocationMarker.equals(marker);
             boolean isSearchMarker = searchMarker != null &&
@@ -541,8 +762,28 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 return false;
             }
 
+            // Try to get room from map first
             Room room = markerRoomMap.get(marker);
-            if (room == null) return false;
+
+            // If not found, try tag backup
+            if (room == null && marker.getTag() != null) {
+                String roomId = (String) marker.getTag();
+                Log.d(TAG, "Looking up room by tag ID: " + roomId);
+
+                for (Room r : roomsList) {
+                    if (r.getId().equals(roomId)) {
+                        room = r;
+                        Log.d(TAG, "Found room from tag: " + r.getTitle());
+                        break;
+                    }
+                }
+            }
+
+            if (room == null) {
+                Log.e(TAG, "No room found for marker at: " + marker.getPosition());
+                Toast.makeText(this, "Error loading room details", Toast.LENGTH_SHORT).show();
+                return true;
+            }
 
             try {
                 Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
@@ -550,15 +791,21 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 startActivity(intent);
             } catch (Exception e) {
                 Log.e(TAG, "Error starting RoomDetailsActivity: " + e.getMessage());
+                Toast.makeText(this, "Error opening room", Toast.LENGTH_SHORT).show();
             }
             return true;
         });
     }
 
-    // Load rooms on map
+    // FIXED: Properly managed room loading without interfering with location marker
     private void loadRoomsOnMap() {
         if (db == null) {
             Log.e(TAG, "Firestore db is null");
+            return;
+        }
+
+        if (myMap == null) {
+            Log.d(TAG, "Map not ready yet, will load rooms later");
             return;
         }
 
@@ -570,36 +817,53 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         return;
                     }
 
-                    if (snapshots == null || myMap == null) {
+                    if (snapshots == null) {
                         return;
                     }
 
-                    // Clear existing data
+                    Log.d(TAG, "Received " + snapshots.size() + " rooms from Firestore");
+
+                    // FIX 1: Save current location position before clearing
+                    LatLng currentLocLatLng = null;
+                    if (currentLocation != null) {
+                        currentLocLatLng = new LatLng(
+                                currentLocation.getLatitude(),
+                                currentLocation.getLongitude()
+                        );
+                    }
+
+                    // FIX 2: Clear ONLY room markers, preserve location marker
+                    for (Marker marker : markerRoomMap.keySet()) {
+                        marker.remove();
+                    }
+
                     roomsList.clear();
                     markerRoomMap.clear();
 
-                    // Clear only if map is ready
-                    if (isMapReady) {
-                        myMap.clear();
-
-                        // Re-add user location marker
-                        if (currentLocation != null) {
-                            LatLng myLocation = new LatLng(
-                                    currentLocation.getLatitude(),
-                                    currentLocation.getLongitude());
-                            currentLocationMarker = myMap.addMarker(new MarkerOptions()
-                                    .position(myLocation)
-                                    .title("My Location")
-                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                    // FIX 3: Handle location marker separately - DON'T recreate
+                    if (currentLocLatLng != null) {
+                        if (currentLocationMarker == null) {
+                            // Create only if it doesn't exist
+                            currentLocationMarker = myMap.addMarker(
+                                    new MarkerOptions()
+                                            .position(currentLocLatLng)
+                                            .title("My Location")
+                                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                            );
+                        } else {
+                            // Just update position of existing marker
+                            currentLocationMarker.setPosition(currentLocLatLng);
                         }
                     }
 
+                    // Add room markers
                     for (QueryDocumentSnapshot doc : snapshots) {
                         try {
                             Room room = doc.toObject(Room.class);
                             room.setId(doc.getId());
 
                             if (room.getLatitude() == 0 || room.getLongitude() == 0) {
+                                Log.w(TAG, "Room " + room.getId() + " has invalid coordinates");
                                 continue;
                             }
 
@@ -610,8 +874,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                                     room.getLongitude());
 
                             Bitmap originalBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_apartment);
-
-                            // Resize (width, height in pixels)
                             Bitmap resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, 40, 40, false);
 
                             Marker marker = myMap.addMarker(
@@ -620,48 +882,146 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                                             .title(room.getTitle())
                                             .snippet("Price: $" + room.getPrice())
                                             .icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap))
-
                             );
 
                             if (marker != null) {
+                                // FIX 4: Add tag as backup identifier
+                                marker.setTag(room.getId());
                                 markerRoomMap.put(marker, room);
+                                Log.d(TAG, "Added marker for room: " + room.getId() + " at " + roomLocation);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error processing room document: " + e.getMessage());
                         }
                     }
 
-                    Log.d(TAG, "Loaded " + roomsList.size() + " rooms");
+                    Log.d(TAG, "Loaded " + roomsList.size() + " rooms with " + markerRoomMap.size() + " markers");
+
+                    // FIX 5: Debug verification
+                    debugMarkerMapping();
                 });
     }
 
-    private void filterApartmentsOnMap() {
-        Toast.makeText(this, "Showing all available apartments", Toast.LENGTH_SHORT).show();
+    // FIX: Added debug method to track marker mapping
+    private void debugMarkerMapping() {
+        Log.d(TAG, "=== MARKER MAPPING DEBUG ===");
+        Log.d(TAG, "Current Location Marker exists: " + (currentLocationMarker != null));
+        if (currentLocationMarker != null) {
+            Log.d(TAG, "Location Marker at: " + currentLocationMarker.getPosition());
+        }
+        Log.d(TAG, "Total rooms in list: " + roomsList.size());
+        Log.d(TAG, "Total markers in map: " + markerRoomMap.size());
+
+        // Check for rooms without markers
+        for (Room room : roomsList) {
+            boolean found = false;
+            for (Room mappedRoom : markerRoomMap.values()) {
+                if (mappedRoom.getId().equals(room.getId())) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                Log.e(TAG, "WARNING: Room " + room.getId() + " - " + room.getTitle() + " has no marker!");
+            }
+        }
+
+        // Check if location marker is accidentally in room map
+        for (Marker marker : markerRoomMap.keySet()) {
+            if (marker.equals(currentLocationMarker)) {
+                Log.e(TAG, "ERROR: Current location marker found in room map!");
+            }
+        }
+        Log.d(TAG, "=== END DEBUG ===");
     }
 
-    // REFRESH MAP WHEN RETURNING
+    private void filterApartmentsOnMap() {
+      Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
+
+
+        if (myMap != null && !roomsList.isEmpty()) {
+            LatLngBounds.Builder builder = new LatLngBounds.Builder();
+
+            for (Room room : roomsList) {
+                builder.include(new LatLng(room.getLatitude(), room.getLongitude()));
+            }
+
+            if (currentLocation != null) {
+                builder.include(new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude()));
+            }
+
+            LatLngBounds bounds = builder.build();
+            int padding = 100;
+            myMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding));
+        }
+
+        startActivity(intent);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         Log.d(TAG, "onResume called");
 
         if (isLocationEnabled()) {
-            requestLocationPermission();
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+
+                if (currentLocation == null) {
+                    getLastLocationWithTimeout();
+                }
+
+                startLocationUpdates();
+
+            } else {
+                requestLocationPermission();
+            }
+        } else {
+            promptEnableLocation();
         }
 
         if (myMap != null && shouldRefreshRooms) {
-            loadRoomsOnMap();
-            shouldRefreshRooms = false;
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                loadRoomsOnMap();
+                shouldRefreshRooms = false;
+            }, 500);
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        Log.d(TAG, "onPause called");
+
         shouldRefreshRooms = true;
+
+        if (locationCallback != null && fusedLocationProviderClient != null) {
+            fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+        }
     }
 
-    // PERMISSION RESULT
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.d(TAG, "onDestroy called");
+
+        try {
+            if (roomReceiver != null) {
+                unregisterReceiver(roomReceiver);
+            }
+            if (gpsStatusReceiver != null) {
+                unregisterReceiver(gpsStatusReceiver);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering receivers: " + e.getMessage());
+        }
+
+        if (locationCallback != null && fusedLocationProviderClient != null) {
+            fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
@@ -670,11 +1030,24 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         if (requestCode == PERMISSION_FINE_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Location permission granted");
-                getLastLocation();
+                getLastLocationWithTimeout();
             } else {
                 Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
-                // Still load map without location
                 loadMapWithoutLocation();
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == REQUEST_CHECK_SETTINGS) {
+            if (resultCode == Activity.RESULT_OK) {
+                Log.d(TAG, "User enabled location settings");
+                startLocationUpdates();
+            } else {
+                Toast.makeText(this, "Location is required for accurate features", Toast.LENGTH_SHORT).show();
             }
         }
     }

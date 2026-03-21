@@ -1,32 +1,42 @@
-
 package com.app.roomify;
 
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Address;
+import android.location.Geocoder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
-import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.DocumentSnapshot;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
 
 public class RoomDetailsActivity extends AppCompatActivity {
+
+    private static final String TAG = "RoomDetailsActivity";
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 200;
 
     private TextView tvTitle, tvPrice, tvAddress, tvDescription;
     private MaterialButton btnGetDirections, btnContactOwner;
 
     private double roomLat = 0, roomLng = 0;
-    private String roomId, ownerId;
+    private String roomId, ownerId, ownerPhone, ownerEmail, roomAddress;
 
-    private FirebaseFirestore db;
     private FusedLocationProviderClient fusedLocationClient;
 
     @Override
@@ -36,14 +46,11 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
         // Get roomId safely
         roomId = getIntent().getStringExtra("room_id");
-        Log.d("ROOM_DETAILS_DEBUG", "Received room_id: " + roomId); // ✅ DEBUG
-
         if (roomId == null || roomId.isEmpty()) {
             Toast.makeText(this, "Room ID missing!", Toast.LENGTH_SHORT).show();
-            finish(); // close activity safely
+            finish();
             return;
         }
-
 
         // Initialize views
         tvTitle = findViewById(R.id.tvRoomTitle);
@@ -53,11 +60,10 @@ public class RoomDetailsActivity extends AppCompatActivity {
         btnGetDirections = findViewById(R.id.btnGetDirections);
         btnContactOwner = findViewById(R.id.btnCallOwner);
 
-        // Firebase & location client
-        db = FirebaseFirestore.getInstance();
+        // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
-        // Load data
+        // Load room details
         loadRoomDetails();
 
         // Button listeners
@@ -66,31 +72,56 @@ public class RoomDetailsActivity extends AppCompatActivity {
     }
 
     private void loadRoomDetails() {
-        db.collection("rooms")
-                .document(roomId)
-                .get()
-                .addOnSuccessListener(doc -> {
-                    if (!doc.exists()) {
-                        Toast.makeText(this, "Room no longer exists", Toast.LENGTH_SHORT).show();
-                        finish();
-                        return;
-                    }
+        FirebaseUtils.getRoom(roomId, task -> {
+            if (!task.isSuccessful() || task.getResult() == null) {
+                Toast.makeText(this, "Failed to load room", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Firestore room load failed", task.getException());
+                return;
+            }
 
-                    Room room = doc.toObject(Room.class);
-                    if (room == null) return;
+            DocumentSnapshot doc = task.getResult();
+            Room room = doc.toObject(Room.class);
+            if (room == null) {
+                Toast.makeText(this, "Room data not found", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-                    tvTitle.setText(room.getTitle());
-                    tvPrice.setText("$" + room.getPrice() + "/month");
-                    tvAddress.setText(room.getAddress());
-                    tvDescription.setText(room.getDescription());
+            // Set UI
+            tvTitle.setText(room.getTitle() != null ? room.getTitle() : "No title");
+            tvPrice.setText("$" + room.getPrice() + "/month");
+            roomAddress = room.getAddress();
+            tvAddress.setText(roomAddress != null ? roomAddress : "Address not available");
+            tvDescription.setText(room.getDescription() != null ? room.getDescription() : "");
 
-                    roomLat = room.getLatitude();
-                    roomLng = room.getLongitude();
-                    ownerId = room.getPostedBy();
-                })
-                .addOnFailureListener(e ->
-                        Toast.makeText(this, "Failed to load room: " + e.getMessage(), Toast.LENGTH_SHORT).show()
-                );
+            // Save location
+            roomLat = room.getLatitude();
+            roomLng = room.getLongitude();
+            ownerId = room.getPostedBy();
+            ownerPhone = room.getContactPhone();
+            ownerEmail = room.getContactEmail();
+
+            // If lat/lng missing, try geocoding
+            if ((roomLat == 0 || roomLng == 0) && roomAddress != null) {
+                geocodeAddress(roomAddress);
+            }
+        });
+    }
+
+    private void geocodeAddress(String address) {
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            List<Address> addresses = geocoder.getFromLocationName(address, 1);
+            if (addresses != null && !addresses.isEmpty()) {
+                Address location = addresses.get(0);
+                roomLat = location.getLatitude();
+                roomLng = location.getLongitude();
+                Log.d(TAG, "Geocoded address to: " + roomLat + ", " + roomLng);
+            } else {
+                Toast.makeText(this, "Could not find location for this address", Toast.LENGTH_SHORT).show();
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Geocoder error: " + e.getMessage());
+        }
     }
 
     private void openDirections() {
@@ -99,70 +130,65 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
+        // Check location permission
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    200);
+                    LOCATION_PERMISSION_REQUEST_CODE);
             return;
         }
 
-        fusedLocationClient.getLastLocation()
-                .addOnSuccessListener(location -> {
-                    if (location != null) {
-                        // Use Google Maps Directions URL with walking mode
-                        String uri = "https://www.google.com/maps/dir/?api=1" +
-                                "&origin=" + location.getLatitude() + "," + location.getLongitude() +
-                                "&destination=" + roomLat + "," + roomLng +
-                                "&travelmode=walking"; //  walking mode
+        fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
+            double originLat = 0, originLng = 0;
+            if (location != null) {
+                originLat = location.getLatitude();
+                originLng = location.getLongitude();
+            }
 
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
-                        intent.setPackage("com.google.android.apps.maps"); // open in Google Maps app
+            // Construct Google Maps directions URI
+            String uri = "https://www.google.com/maps/dir/?api=1" +
+                    "&origin=" + originLat + "," + originLng +
+                    "&destination=" + roomLat + "," + roomLng +
+                    "&travelmode=walking";
 
-                        if (intent.resolveActivity(getPackageManager()) != null) {
-                            startActivity(intent);
-                        } else {
-                            // fallback if Maps app not installed
-                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
-                        }
-                    } else {
-                        Toast.makeText(this, "Unable to get your location", Toast.LENGTH_SHORT).show();
-                    }
-                });
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
+            intent.setPackage("com.google.android.apps.maps");
+
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                // fallback to browser
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
+            }
+        });
     }
 
-
     private void contactRoomOwner() {
-        if (ownerId == null || ownerId.isEmpty()) {
-            Toast.makeText(this, "Owner info not found", Toast.LENGTH_SHORT).show();
-            return;
+        if (ownerPhone != null && !ownerPhone.isEmpty()) {
+            Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + ownerPhone));
+            startActivity(intent);
+        } else if (ownerEmail != null && !ownerEmail.isEmpty()) {
+            Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + ownerEmail));
+            intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + tvTitle.getText());
+            startActivity(intent);
+        } else {
+            Toast.makeText(this, "Owner contact not available", Toast.LENGTH_SHORT).show();
         }
+    }
 
-        db.collection("users").document(ownerId)
-                .get()
-                .addOnSuccessListener(doc -> {
-                    if (!doc.exists()) {
-                        Toast.makeText(this, "Owner details not found", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-                    String phone = doc.getString("phone");
-                    String email = doc.getString("email");
-
-                    if (phone != null && !phone.isEmpty()) {
-                        Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone));
-                        startActivity(intent);
-                    } else if (email != null && !email.isEmpty()) {
-                        Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + email));
-                        intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + tvTitle.getText());
-                        startActivity(intent);
-                    } else {
-                        Toast.makeText(this, "Owner contact not available", Toast.LENGTH_SHORT).show();
-                    }
-
-                })
-                .addOnFailureListener(e ->
-                        Toast.makeText(this, "Failed to load owner info: " + e.getMessage(), Toast.LENGTH_SHORT).show()
-                );
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                openDirections();
+            } else {
+                Toast.makeText(this, "Location permission required for directions", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }

@@ -27,11 +27,10 @@ public class SplashActivity extends AppCompatActivity {
 
         // Wait 6 seconds for splash animation
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-
             if (isInternetAvailable()) {
 
                 // Internet OK → open intended screen
-                Intent intent = new Intent(SplashActivity.this, LocationMap.class);
+                Intent intent = new Intent(SplashActivity.this, LoginActivity.class);
                 startActivity(intent);
 
             } else {
@@ -40,7 +39,6 @@ public class SplashActivity extends AppCompatActivity {
                 Intent intent = new Intent(SplashActivity.this, NoInternetActivity.class);
                 startActivity(intent);
             }
-
             finish();
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
 

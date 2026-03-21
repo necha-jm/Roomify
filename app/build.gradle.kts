@@ -54,8 +54,6 @@ dependencies {
     implementation("com.airbnb.android:lottie:6.1.0")
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-storage")
     implementation ("com.github.bumptech.glide:glide:4.16.0")
     implementation ("com.google.android.material:material:1.11.0")
     implementation("com.google.android.gms:play-services-location:21.0.1")
@@ -69,6 +67,17 @@ dependencies {
     implementation("com.google.android.libraries.places:places:3.3.0")
     implementation("com.google.android.material:material:1.9.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+
+    implementation("androidx.preference:preference:1.2.1")
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Firebase BoM and dependencies
+    implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
+    implementation("com.google.firebase:firebase-database")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-storage")
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
 
 
 
