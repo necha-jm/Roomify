@@ -512,6 +512,12 @@ public class PostRoomActivity extends AppCompatActivity {
     private void saveRoomToFirestore(String title, String description, double price,
                                      String propertyType, String phone, String email) {
 
+        // ADD THIS CHECK
+        if (selectedLocation == null) {
+            Toast.makeText(this, "Please select location on map", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String roomId = db.collection("rooms").document().getId();
 
         // Create a simple map with only essential data
@@ -606,6 +612,8 @@ public class PostRoomActivity extends AppCompatActivity {
         super.onPause();
         if (mapViewPost != null) mapViewPost.onPause();
     }
+
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,

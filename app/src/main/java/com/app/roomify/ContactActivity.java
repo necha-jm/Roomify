@@ -56,13 +56,16 @@ public class ContactActivity extends AppCompatActivity {
         );
 
         if (cursor != null) {
-            while (cursor.moveToNext()) {
-                String name = cursor.getString(cursor.getColumnIndex(
-                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
-                String phone = cursor.getString(cursor.getColumnIndex(
-                        ContactsContract.CommonDataKinds.Phone.NUMBER));
+            int nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+            int phoneIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
 
-                contactList.add(new Contact(name, phone));
+            while (cursor.moveToNext()) {
+                if (nameIndex != -1 && phoneIndex != -1) {
+                    String name = cursor.getString(nameIndex);
+                    String phone = cursor.getString(phoneIndex);
+
+                    contactList.add(new Contact(name, phone));
+                }
             }
             cursor.close();
         }

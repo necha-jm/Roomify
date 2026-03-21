@@ -131,6 +131,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         LocaleHelper.loadLocale(this);
         setContentView(R.layout.activity_location_map);
 
+
+
         contact = findViewById(R.id.contact);
 
         contact.setOnClickListener(new View.OnClickListener() {
@@ -810,7 +812,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
 
         db.collection("rooms")
-                .whereEqualTo("available", true)
+                .whereEqualTo("isAvailable", true)
                 .addSnapshotListener((snapshots, error) -> {
                     if (error != null) {
                         Log.e(TAG, "Firestore error: " + error.getMessage());
