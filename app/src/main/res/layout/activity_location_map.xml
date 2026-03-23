@@ -2,12 +2,13 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    android:background="@color/surface">
+    android:background="@color/surface"
+    tools:context=".MainActivity">
 
     <!-- Google Map Fragment -->
     <fragment
@@ -16,16 +17,25 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Search Bar with Modern Design -->
+    <!-- Modern Gradient Overlay for better visibility -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:background="@drawable/gradient_overlay_top"
+        android:alpha="0.6" />
+
+    <!-- Enhanced Search Bar with Modern Design -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/search_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:cardCornerRadius="28dp"
-        app:cardElevation="8dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="20dp"
+        app:cardCornerRadius="32dp"
+        app:cardElevation="12dp"
         app:cardBackgroundColor="@android:color/white"
+        app:cardPreventCornerOverlap="true"
         app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
 
         <LinearLayout
@@ -37,111 +47,147 @@
 
             <ImageView
                 android:id="@+id/search_icon"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginStart="16dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="20dp"
                 android:layout_marginEnd="12dp"
                 android:src="@drawable/ic_search"
-                app:tint="?attr/colorPrimary" />
+                app:tint="?attr/colorPrimary"
+                android:alpha="0.8" />
 
             <EditText
                 android:id="@+id/search_edittext"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="56dp"
                 android:layout_weight="1"
                 android:hint="@string/search_location_or_room"
                 android:background="@null"
                 android:padding="0dp"
                 android:textSize="16sp"
                 android:imeOptions="actionSearch"
-                android:maxLines="1" />
+                android:maxLines="1"
+                android:fontFamily="sans-serif"
+                android:textColorHint="@color/text_secondary" />
 
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/fab_location"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="12dp"
                 android:contentDescription="@string/todo"
                 android:src="@drawable/ic_my_location"
                 app:backgroundTint="?attr/colorPrimary"
                 app:tint="@android:color/white"
-                app:elevation="0dp" />
+                app:elevation="0dp"
+                app:fabSize="mini" />
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Modern Bottom Sheet -->
+    <!-- Modern Bottom Sheet with Enhanced Design -->
     <LinearLayout
         android:id="@+id/bottom_sheet"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="bottom"
-        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
+        app:behavior_peekHeight="120dp"
+        app:behavior_hideable="false">
 
-        <!-- Bottom Sheet Handle -->
-        <View
-            android:layout_width="40dp"
-            android:layout_height="4dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:background="@drawable/bottom_sheet_handle" />
+        <!-- Enhanced Bottom Sheet Handle with Ripple Effect -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            android:background="@drawable/bottom_sheet_handle_background"
+            android:clickable="true"
+            android:focusable="true">
+
+            <View
+                android:layout_width="48dp"
+                android:layout_height="5dp"
+                android:layout_gravity="center_horizontal"
+                android:background="@drawable/bottom_sheet_handle"
+                android:alpha="0.5" />
+
+            <View
+                android:layout_width="32dp"
+                android:layout_height="5dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="2dp"
+                android:background="@drawable/bottom_sheet_handle"
+                android:alpha="0.3" />
+        </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:cardCornerRadius="24dp"
+            app:cardCornerRadius="28dp"
             app:cardBackgroundColor="@android:color/white"
-            app:elevation="16dp">
+            app:elevation="20dp"
+            app:cardElevation="0dp">
 
             <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:fillViewport="true">
+                android:fillViewport="true"
+                android:scrollbars="none">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="24dp">
+                    android:padding="24dp"
+                    android:paddingTop="8dp">
 
-                    <!-- Header Section -->
+                    <!-- Header Section - FIXED SETTINGS BUTTON -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginBottom="24dp">
+                        android:layout_marginBottom="28dp">
 
                         <TextView
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/discover_places"
-                            android:textSize="24sp"
+                            android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@android:color/black"
-                            android:fontFamily="sans-serif-medium" />
+                            android:fontFamily="sans-serif-medium"
+                            android:letterSpacing="-0.02" />
 
-                        <ImageView
+                        <!-- FIXED: Using AppCompatImageButton instead of MaterialButton -->
+                        <androidx.appcompat.widget.AppCompatImageButton
                             android:id="@+id/btn_settings"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
                             android:src="@drawable/ic_settings"
-                            app:tint="?attr/colorPrimary" />
+                            android:contentDescription="@string/settings"
+                            android:background="@drawable/circular_background"
+                            app:tint="?attr/colorPrimary"
+                            android:padding="12dp"
+                            android:clickable="true"
+                            android:focusable="true" />
+
                     </LinearLayout>
 
-                    <!-- Quick Actions Grid -->
+                    <!-- Quick Actions Section with Enhanced Cards -->
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/quick_actions"
-                        android:textSize="16sp"
+                        android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="@android:color/black"
-                        android:layout_marginBottom="16dp"
-                        android:fontFamily="sans-serif-medium" />
+                        android:layout_marginBottom="20dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="-0.01" />
 
                     <GridLayout
                         android:layout_width="match_parent"
@@ -150,147 +196,159 @@
                         android:rowCount="2"
                         android:alignmentMode="alignMargins"
                         android:columnOrderPreserved="false"
-                        android:layout_marginBottom="32dp">
+                        android:layout_marginBottom="36dp"
+                        android:padding="4dp">
 
-                        <!-- Apartment Card -->
+                        <!-- Apartment Card - Enhanced -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/apartment_card"
                             android:layout_width="0dp"
-                            android:layout_height="100dp"
+                            android:layout_height="120dp"
                             android:layout_columnWeight="1"
-                            android:layout_margin="8dp"
+                            android:layout_margin="6dp"
                             android:layout_rowWeight="1"
-                            app:cardCornerRadius="16dp"
-                            app:strokeColor="?attr/colorOutline"
-                            app:strokeWidth="1dp"
-                            android:foreground="?attr/selectableItemBackground">
+                            app:cardCornerRadius="20dp"
+                            app:strokeColor="?attr/colorPrimary"
+                            app:strokeWidth="0dp"
+                            app:cardElevation="2dp"
+                            android:foreground="?attr/selectableItemBackgroundBorderless"
+                            android:stateListAnimator="@animator/card_state_animator">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
                                 android:orientation="vertical"
                                 android:gravity="center"
-                                android:padding="16dp">
+                                android:padding="12dp">
 
                                 <ImageView
                                     android:id="@+id/apartment"
-                                    android:layout_width="32dp"
-                                    android:layout_height="32dp"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
                                     android:src="@drawable/ic_apartment"
-                                    app:tint="?attr/colorPrimary" />
+                                    app:tint="?attr/colorPrimary"
+                                    android:alpha="0.9" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/apartment"
-                                    android:textSize="12sp"
+                                    android:textSize="13sp"
                                     android:textColor="@android:color/black"
-                                    android:layout_marginTop="8dp"
-                                    android:fontFamily="sans-serif" />
+                                    android:layout_marginTop="10dp"
+                                    android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Add Room Card -->
+                        <!-- Add Room Card - Enhanced -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/addRoom_card"
                             android:layout_width="0dp"
-                            android:layout_height="100dp"
+                            android:layout_height="120dp"
                             android:layout_columnWeight="1"
-                            android:layout_margin="8dp"
+                            android:layout_margin="6dp"
                             android:layout_rowWeight="1"
-                            app:cardCornerRadius="16dp"
-                            app:strokeColor="?attr/colorOutline"
-                            app:strokeWidth="1dp"
-                            android:foreground="?attr/selectableItemBackground">
+                            app:cardCornerRadius="20dp"
+                            app:strokeColor="?attr/colorPrimary"
+                            app:strokeWidth="0dp"
+                            app:cardElevation="2dp"
+                            android:foreground="?attr/selectableItemBackgroundBorderless"
+                            android:stateListAnimator="@animator/card_state_animator">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
                                 android:orientation="vertical"
                                 android:gravity="center"
-                                android:padding="16dp">
+                                android:padding="12dp">
 
                                 <ImageView
                                     android:id="@+id/addRoom"
-                                    android:layout_width="32dp"
-                                    android:layout_height="32dp"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
                                     android:src="@drawable/ic_addd"
-                                    app:tint="?attr/colorPrimary" />
+                                    app:tint="?attr/colorPrimary"
+                                    android:alpha="0.9" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/add_room"
-                                    android:textSize="12sp"
+                                    android:textSize="13sp"
                                     android:textColor="@android:color/black"
-                                    android:layout_marginTop="8dp"
-                                    android:fontFamily="sans-serif" />
+                                    android:layout_marginTop="10dp"
+                                    android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Language Card -->
+                        <!-- Language Card - Enhanced -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/language_card"
                             android:layout_width="0dp"
-                            android:layout_height="100dp"
+                            android:layout_height="120dp"
                             android:layout_columnWeight="1"
-                            android:layout_margin="8dp"
+                            android:layout_margin="6dp"
                             android:layout_rowWeight="1"
-                            app:cardCornerRadius="16dp"
-                            app:strokeColor="?attr/colorOutline"
-                            app:strokeWidth="1dp"
-                            android:foreground="?attr/selectableItemBackground">
+                            app:cardCornerRadius="20dp"
+                            app:strokeColor="?attr/colorPrimary"
+                            app:strokeWidth="0dp"
+                            app:cardElevation="2dp"
+                            android:foreground="?attr/selectableItemBackgroundBorderless"
+                            android:stateListAnimator="@animator/card_state_animator">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
                                 android:orientation="vertical"
                                 android:gravity="center"
-                                android:padding="16dp">
+                                android:padding="12dp">
 
                                 <ImageView
-                                    android:layout_width="32dp"
-                                    android:layout_height="32dp"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
                                     android:src="@drawable/ic_state"
-                                    app:tint="?attr/colorPrimary" />
+                                    app:tint="?attr/colorPrimary"
+                                    android:alpha="0.9" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="@string/language"
-                                    android:textSize="12sp"
+                                    android:textSize="13sp"
                                     android:textColor="@android:color/black"
-                                    android:layout_marginTop="8dp"
-                                    android:fontFamily="sans-serif" />
+                                    android:layout_marginTop="10dp"
+                                    android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
                     </GridLayout>
 
-                    <!-- Recent Searches Section -->
+                    <!-- Recent Searches Section with Enhanced Design -->
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/recent_searches"
-                        android:textSize="16sp"
+                        android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="@android:color/black"
-                        android:layout_marginBottom="16dp"
-                        android:fontFamily="sans-serif-medium" />
+                        android:layout_marginBottom="20dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="-0.01" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
-                        <!-- UDSM Item -->
+                        <!-- UDSM Item - Enhanced -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="8dp"
-                            app:cardCornerRadius="12dp"
-                            app:strokeColor="?attr/colorOutline"
-                            app:strokeWidth="1dp"
+                            android:layout_marginBottom="12dp"
+                            app:cardCornerRadius="16dp"
+                            app:strokeColor="@color/text_secondary"
+                            app:strokeWidth="0.5dp"
+                            app:cardElevation="1dp"
                             android:foreground="?attr/selectableItemBackground">
 
                             <LinearLayout
@@ -300,12 +358,19 @@
                                 android:padding="16dp"
                                 android:gravity="center_vertical">
 
-                                <ImageView
-                                    android:layout_width="24dp"
-                                    android:layout_height="24dp"
-                                    android:src="@drawable/ic_save"
-                                    android:layout_marginEnd="16dp"
-                                    app:tint="?attr/colorPrimary" />
+                                <LinearLayout
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:background="@drawable/circular_background_primary"
+                                    android:gravity="center"
+                                    android:layout_marginEnd="16dp">
+
+                                    <ImageView
+                                        android:layout_width="24dp"
+                                        android:layout_height="24dp"
+                                        android:src="@drawable/ic_save"
+                                        app:tint="?attr/colorPrimary" />
+                                </LinearLayout>
 
                                 <LinearLayout
                                     android:layout_width="0dp"
@@ -317,8 +382,9 @@
                                         android:id="@+id/contact"
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
-                                        android:text="contact"
-                                        android:textSize="14sp"
+                                        android:text="University of Dar es Salaam"
+                                        android:textSize="16sp"
+                                        android:textStyle="bold"
                                         android:textColor="@android:color/black"
                                         android:fontFamily="sans-serif-medium" />
 
@@ -326,26 +392,28 @@
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="@string/university_of_dar_es_salaam"
-                                        android:textSize="12sp"
+                                        android:textSize="13sp"
                                         android:textColor="@color/text_secondary"
-                                        android:layout_marginTop="2sp" />
+                                        android:layout_marginTop="4dp" />
                                 </LinearLayout>
 
                                 <ImageView
-                                    android:layout_width="24dp"
-                                    android:layout_height="24dp"
+                                    android:layout_width="20dp"
+                                    android:layout_height="20dp"
                                     android:src="@drawable/ic_back"
-                                    app:tint="@color/text_secondary" />
+                                    app:tint="@color/text_secondary"
+                                    android:alpha="0.6" />
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Bus Office Item -->
+                        <!-- Bus Office Item - Enhanced -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            app:cardCornerRadius="12dp"
-                            app:strokeColor="?attr/colorOutline"
-                            app:strokeWidth="1dp"
+                            app:cardCornerRadius="16dp"
+                            app:strokeColor="@color/text_secondary"
+                            app:strokeWidth="0.5dp"
+                            app:cardElevation="1dp"
                             android:foreground="?attr/selectableItemBackground">
 
                             <LinearLayout
@@ -355,12 +423,19 @@
                                 android:padding="16dp"
                                 android:gravity="center_vertical">
 
-                                <ImageView
-                                    android:layout_width="24dp"
-                                    android:layout_height="24dp"
-                                    android:src="@drawable/ic_bath"
-                                    android:layout_marginEnd="16dp"
-                                    app:tint="?attr/colorPrimary" />
+                                <LinearLayout
+                                    android:layout_width="48dp"
+                                    android:layout_height="48dp"
+                                    android:background="@drawable/circular_background_secondary"
+                                    android:gravity="center"
+                                    android:layout_marginEnd="16dp">
+
+                                    <ImageView
+                                        android:layout_width="24dp"
+                                        android:layout_height="24dp"
+                                        android:src="@drawable/ic_bath"
+                                        app:tint="@color/secondary" />
+                                </LinearLayout>
 
                                 <LinearLayout
                                     android:layout_width="0dp"
@@ -372,7 +447,8 @@
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="@string/ally_s_bus_office"
-                                        android:textSize="14sp"
+                                        android:textSize="16sp"
+                                        android:textStyle="bold"
                                         android:textColor="@android:color/black"
                                         android:fontFamily="sans-serif-medium" />
 
@@ -380,38 +456,44 @@
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="@string/bus_station_ticket_office"
-                                        android:textSize="12sp"
+                                        android:textSize="13sp"
                                         android:textColor="@color/text_secondary"
-                                        android:layout_marginTop="2sp" />
+                                        android:layout_marginTop="4dp" />
                                 </LinearLayout>
 
                                 <ImageView
-                                    android:layout_width="24dp"
-                                    android:layout_height="24dp"
+                                    android:layout_width="20dp"
+                                    android:layout_height="20dp"
                                     android:src="@drawable/ic_close"
-                                    app:tint="@color/text_secondary" />
+                                    app:tint="@color/text_secondary"
+                                    android:alpha="0.6" />
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
                     </LinearLayout>
 
-                    <!-- Language Selection (Hidden by default, shows on tap) -->
+                    <!-- Language Selection (Hidden by default, shows on tap) - Enhanced -->
                     <LinearLayout
                         android:id="@+id/language_selection"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:layout_marginTop="24dp"
-                        android:visibility="gone">
+                        android:layout_marginTop="32dp"
+                        android:padding="16dp"
+                        android:background="@drawable/language_selection_background"
+                        android:visibility="gone"
+                        android:gravity="center">
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chip_english"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="English"
-                            android:layout_marginEnd="8dp"
+                            android:layout_marginEnd="12dp"
                             app:chipBackgroundColor="@color/chip_background"
-                            app:checkedIcon="@drawable/ic_room_available" />
+                            app:checkedIcon="@drawable/ic_room_available"
+                            app:chipIcon="@drawable/ic_english"
+                            app:chipIconTint="?attr/colorPrimary" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chip_swahili"
@@ -419,7 +501,9 @@
                             android:layout_height="wrap_content"
                             android:text="@string/swahili"
                             app:chipBackgroundColor="@color/chip_background"
-                            app:checkedIcon="@drawable/ic_room_occupied" />
+                            app:checkedIcon="@drawable/ic_room_occupied"
+                            app:chipIcon="@drawable/ic_swahili"
+                            app:chipIconTint="?attr/colorPrimary" />
                     </LinearLayout>
 
                 </LinearLayout>

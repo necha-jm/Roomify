@@ -13,7 +13,9 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
@@ -23,6 +25,8 @@ import com.google.android.material.button.MaterialButton;
 import com.google.firebase.firestore.DocumentSnapshot;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -31,13 +35,15 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private static final String TAG = "RoomDetailsActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 200;
 
-    private TextView tvTitle, tvPrice, tvAddress, tvDescription;
+    private TextView tvTitle, tvPrice, tvAddress, tvDescription,tvBedrooms,tvPostedDate;
     private MaterialButton btnGetDirections, btnContactOwner;
 
     private double roomLat = 0, roomLng = 0;
     private String roomId, ownerId, ownerPhone, ownerEmail, roomAddress;
 
     private FusedLocationProviderClient fusedLocationClient;
+
+    private RecyclerView Amenities;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +65,9 @@ public class RoomDetailsActivity extends AppCompatActivity {
         tvDescription = findViewById(R.id.tvRoomDescription);
         btnGetDirections = findViewById(R.id.btnGetDirections);
         btnContactOwner = findViewById(R.id.btnCallOwner);
+        tvBedrooms = findViewById(R.id.tvBedrooms);
+        tvPostedDate = findViewById(R.id.tvPostedDate);
+
 
         // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
@@ -166,7 +175,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
     private void contactRoomOwner() {
         if (ownerPhone != null && !ownerPhone.isEmpty()) {
-            Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + ownerPhone));
+            Intent intent = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + ownerPhone));
             startActivity(intent);
         } else if (ownerEmail != null && !ownerEmail.isEmpty()) {
             Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + ownerEmail));
