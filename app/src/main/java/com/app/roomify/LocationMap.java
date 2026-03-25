@@ -24,6 +24,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -39,6 +40,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -65,6 +69,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 
@@ -103,7 +108,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private ImageView apartmentIcon;
     private MaterialCardView addRoomCard;
     private MaterialCardView languageCard;
-    private LinearLayout languageSelection;
+    private LinearLayout languageSelection,tab_profile;
     private Chip chipEnglish;
     private Chip chipSwahili;
     private ImageView btnSettings;
@@ -123,6 +128,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
     TextView contact;
 
+    private FirebaseAuth mAuth;
+    private GoogleSignInClient googleSignInClient;
+
     private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
 
     @Override
@@ -131,7 +139,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         LocaleHelper.loadLocale(this);
         setContentView(R.layout.activity_location_map);
 
+        mAuth = FirebaseAuth.getInstance();
 
+        // Initialize GoogleSignInClient
+        googleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN);
 
         contact = findViewById(R.id.contact);
 
@@ -233,6 +244,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             apartmentIcon = findViewById(R.id.apartment);
             addRoomCard = findViewById(R.id.addRoom_card);
             languageCard = findViewById(R.id.language_card);
+            tab_profile = findViewById(R.id.tab_profile);
 
             // Language selection
             languageSelection = findViewById(R.id.language_selection);
@@ -327,6 +339,16 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 });
             }
 
+
+            //LOGOUT
+
+            if (tab_profile != null) {
+                tab_profile.setOnClickListener(v -> {
+                    AuthManager.logoutUser(this, mAuth, googleSignInClient);
+                });
+            }
+
+
             // Settings button
             if (btnSettings != null) {
                 btnSettings.setOnClickListener(v -> {
@@ -361,18 +383,25 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             return;
         }
 
+        // Set up search on keyboard action
         searchEditText.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
+                            event.getAction() == KeyEvent.ACTION_DOWN)) {
                 String query = searchEditText.getText().toString().trim();
-                if (!query.isEmpty() && myMap != null) {
+                if (!query.isEmpty()) {
+                    Log.d(TAG, "Searching for: " + query);
                     performGeocodeSearch(query);
                     hideKeyboard();
+                } else {
+                    Toast.makeText(this, "Please enter a location to search", Toast.LENGTH_SHORT).show();
                 }
                 return true;
             }
             return false;
         });
 
+        // Clear button functionality (X button in search field)
         searchEditText.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 Drawable drawableRight = searchEditText.getCompoundDrawables()[2];
@@ -380,66 +409,78 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                     int drawableWidth = drawableRight.getBounds().width();
                     if (event.getX() >= (searchEditText.getWidth() - drawableWidth
                             - searchEditText.getPaddingRight())) {
+                        // Clear button clicked
                         searchEditText.setText("");
                         clearSearchMarker();
+
+                        // Return to current location if available
+                        if (currentLocation != null && myMap != null) {
+                            LatLng myLocation = new LatLng(
+                                    currentLocation.getLatitude(),
+                                    currentLocation.getLongitude()
+                            );
+                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14f));
+                            Toast.makeText(this, "Returned to your location", Toast.LENGTH_SHORT).show();
+                        }
                         return true;
                     }
                 }
             }
             return false;
         });
+
+        // Add focus change listener
+        searchEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                hideKeyboard();
+            }
+        });
+
+        Log.d(TAG, "Search setup completed");
     }
 
     private void performGeocodeSearch(String query) {
-        if (!isNetworkAvailable()) {
-            Toast.makeText(this, "No internet connection", Toast.LENGTH_SHORT).show();
+        if (query.isEmpty()) {
+            Toast.makeText(this, "Enter a location to search", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (myMap == null) {
+            Toast.makeText(this, "Map is not ready yet", Toast.LENGTH_SHORT).show();
             return;
         }
 
         new Thread(() -> {
-            int retryCount = 0;
-            int maxRetries = 3;
+            try {
+                Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocationName(query, 1);
 
-            while (retryCount < maxRetries) {
-                try {
-                    Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-                    List<Address> addressList = geocoder.getFromLocationName(query, 1);
+                if (addresses != null && !addresses.isEmpty()) {
+                    Address address = addresses.get(0);
+                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+                    runOnUiThread(() -> {
+                        myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
 
-                    if (addressList != null && !addressList.isEmpty()) {
-                        Address address = addressList.get(0);
-                        LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
-
-                        runOnUiThread(() -> {
-                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
-                            addSearchResultMarker(latLng, address.getAddressLine(0));
-                        });
-                        return;
-                    } else {
-                        retryCount++;
-                        if (retryCount < maxRetries) {
-                            Thread.sleep(1000);
+                        // Add or move search marker
+                        if (searchMarker == null) {
+                            searchMarker = myMap.addMarker(new MarkerOptions()
+                                    .position(latLng)
+                                    .title(query)
+                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)));
+                        } else {
+                            searchMarker.setPosition(latLng);
+                            searchMarker.setTitle(query);
+                            searchMarker.showInfoWindow();
                         }
-                    }
-                } catch (IOException e) {
-                    Log.e(TAG, "Geocoder error: " + e.getMessage());
-                    retryCount++;
-                    if (retryCount < maxRetries) {
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+
+                        Toast.makeText(this, "Found: " + query, Toast.LENGTH_SHORT).show();
+                    });
+                } else {
+                    runOnUiThread(() -> Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show());
                 }
+            } catch (IOException e) {
+                runOnUiThread(() -> Toast.makeText(this, "Geocoder error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
-
-            runOnUiThread(() ->
-                    Toast.makeText(this, "Search failed after multiple attempts", Toast.LENGTH_SHORT).show()
-            );
         }).start();
     }
 
@@ -480,6 +521,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         if (searchMarker != null) {
             searchMarker.remove();
             searchMarker = null;
+            Log.d(TAG, "Search marker cleared");
         }
     }
 
@@ -938,10 +980,13 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void filterApartmentsOnMap() {
-      Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
+        if (roomsList.isEmpty()) {
+            Toast.makeText(this, "No rooms available", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-
-        if (myMap != null && !roomsList.isEmpty()) {
+        // Move map to include all rooms and current location
+        if (myMap != null) {
             LatLngBounds.Builder builder = new LatLngBounds.Builder();
 
             for (Room room : roomsList) {
@@ -957,6 +1002,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             myMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding));
         }
 
+        // Open the first room as an example
+        Room firstRoom = roomsList.get(0);
+        Intent intent = new Intent(LocationMap.this, RoomDetailsActivity.class);
+        intent.putExtra("room_id", firstRoom.getId());
         startActivity(intent);
     }
 

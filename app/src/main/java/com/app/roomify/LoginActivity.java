@@ -309,6 +309,44 @@ public class LoginActivity extends AppCompatActivity {
         }
     }
 
+
+    public void logoutUser() {
+
+        // Show loading (optional)
+        showLoading(true);
+
+        // 1. Firebase logout
+        if (mAuth != null) {
+            mAuth.signOut();
+        }
+
+        // 2. Google logout (IMPORTANT)
+        if (googleSignInClient != null) {
+            googleSignInClient.signOut().addOnCompleteListener(this, task -> {
+
+                showLoading(false);
+
+                Toast.makeText(LoginActivity.this,
+                        "Logged out successfully",
+                        Toast.LENGTH_SHORT).show();
+
+                // 3. Go back to Login screen
+                Intent intent = new Intent(LoginActivity.this, LoginActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(intent);
+                finish();
+            });
+        } else {
+            showLoading(false);
+
+            // If Google not used
+            Intent intent = new Intent(LoginActivity.this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+        }
+    }
+
     private void firebaseAuthWithGoogle(String idToken) {
         showLoading(true);
         AuthCredential credential = GoogleAuthProvider.getCredential(idToken, null);
