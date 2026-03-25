@@ -101,6 +101,12 @@ public class RoomDetailsActivity extends AppCompatActivity {
             roomAddress = room.getAddress();
             tvAddress.setText(roomAddress != null ? roomAddress : "Address not available");
             tvDescription.setText(room.getDescription() != null ? room.getDescription() : "");
+            tvBedrooms.setText(String.valueOf(room.getRoomsCount()));
+
+            long timestamp = room.getCreatedAt();
+            String formattedDate = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    .format(new Date(timestamp));
+            tvPostedDate.setText(formattedDate);
 
             // Save location
             roomLat = room.getLatitude();

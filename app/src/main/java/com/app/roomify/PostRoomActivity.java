@@ -33,6 +33,7 @@ import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.osmdroid.config.Configuration;
 import org.osmdroid.events.MapEventsReceiver;
@@ -105,6 +106,16 @@ public class PostRoomActivity extends AppCompatActivity {
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance();
+
+        FirebaseMessaging.getInstance().subscribeToTopic("rooms")
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        Log.d("FCM", "Subscribed to rooms topic");
+                        Toast.makeText(this, "Subscribed to room notifications", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Log.e("FCM", "Failed to subscribe to topic");
+                    }
+                });
 
         // Initialize OSMDroid
         try {
@@ -209,6 +220,37 @@ public class PostRoomActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error setting up map: " + e.getMessage());
         }
+    }
+
+    private void sendRoomNotification() {
+        new Thread(() -> {
+            try {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+                org.json.JSONObject json = new org.json.JSONObject();
+                json.put("to", "/topics/rooms"); // send to all devices subscribed
+
+                org.json.JSONObject notification = new org.json.JSONObject();
+                notification.put("title", "New Room Available 🏠");
+                notification.put("body", "Check out the latest room posted!");
+
+                json.put("notification", notification);
+
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        json.toString(),
+                        okhttp3.MediaType.parse("application/json")
+                );
+
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url("https://fcm.googleapis.com/fcm/send")
+                        .post(body)
+                        .addHeader("Authorization", "key=YOUR_SERVER_KEY") // replace with your Firebase server key
+                        .build();
+
+                client.newCall(request).execute();
+            } catch (Exception e) {
+                Log.e("FCM", "Error sending notification: " + e.getMessage());
+            }
+        }).start();
     }
 
     private void selectLocation(GeoPoint point) {
@@ -334,6 +376,44 @@ public class PostRoomActivity extends AppCompatActivity {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("application/pdf");
         startActivityForResult(intent, CONTRACT_PICK_REQUEST_CODE);
+    }
+
+
+    private void sendNewRoomNotification() {
+
+        String url = "https://fcm.googleapis.com/fcm/send";
+
+        new Thread(() -> {
+            try {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+
+                org.json.JSONObject json = new org.json.JSONObject();
+
+                json.put("to", "/topics/rooms");
+
+                org.json.JSONObject notification = new org.json.JSONObject();
+                notification.put("title", "New Room Available 🏠");
+                notification.put("body", "Check out the latest room posted!");
+
+                json.put("notification", notification);
+
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        json.toString(),
+                        okhttp3.MediaType.parse("application/json")
+                );
+
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url(url)
+                        .post(body)
+                        .addHeader("Authorization", "key=YOUR_SERVER_KEY")
+                        .build();
+
+                client.newCall(request).execute();
+
+            } catch (Exception e) {
+                Log.e("FCM", "Error sending notification: " + e.getMessage());
+            }
+        }).start();
     }
 
     @Override
@@ -538,6 +618,8 @@ public class PostRoomActivity extends AppCompatActivity {
         room.put("hasContract", selectedContractUri != null);
         room.put("createdAt", System.currentTimeMillis());
         room.put("isAvailable", true);
+        room.put("roomsCount", Integer.parseInt(etRoomsCount.getText().toString()));
+        room.put("bathroomsCount", Integer.parseInt(etBathroomsCount.getText().toString()));
 
         Log.d(TAG, "Saving room with ID: " + roomId);
         Log.d(TAG, "Data size: " + room.toString().length() + " characters");
@@ -546,6 +628,8 @@ public class PostRoomActivity extends AppCompatActivity {
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
                     showLoading(false);
+                    // Trigger notification
+                    sendRoomNotification(); //
                     Log.d(TAG, "Room saved successfully!");
 
                     new MaterialAlertDialogBuilder(this)
