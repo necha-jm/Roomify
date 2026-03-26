@@ -62,4 +62,22 @@
     <color name="gray_300">#E0E0E0</color>
     <color name="gray_500">#9E9E9E</color>
 
+    <color name="background_light">#F8F9FA</color>
+
+    <!-- Primary Colors -->
+    <color name="primary_teal">#1ABC9C</color>
+    <color name="primary_teal_dark">#16A085</color>
+
+    <!-- Text Colors -->
+    <color name="text_dark">#2C3E50</color>
+    <color name="text_gray">#7F8C8D</color>
+    <color name="rating_gold">#F39C12</color>
+
+    <!-- Card Colors -->
+    <color name="card_blue_light">#E8F8F5</color>
+
+    <!-- Bottom Navigation Tint -->
+    <color name="bottom_nav_tint">#7F8C8D</color>
+    <color name="bottom_nav_selected">#1ABC9C</color>
+
 </resources>

@@ -501,30 +501,31 @@
         android:paddingBottom="8dp"
         android:weightSum="3">
 
-        <!-- Profile Tab -->
+        <!-- Menu Tab -->
         <LinearLayout
-            android:id="@+id/tab_profile"
+            android:id="@+id/tab_menu"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
             android:clickable="true"
-            android:focusable="true">
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
 
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:src="@drawable/ic_profile"
-                app:tint="@color/black"/>
+                android:src="@drawable/ic_calendar"
+                app:tint="@color/black" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Profile"
+                android:text="Menu"
                 android:textSize="12sp"
                 android:textColor="@color/black"
-                android:layout_marginTop="4dp"/>
+                android:layout_marginTop="4dp" />
         </LinearLayout>
 
         <!-- Ride Tab -->
@@ -536,13 +537,14 @@
             android:orientation="vertical"
             android:gravity="center"
             android:clickable="true"
-            android:focusable="true">
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
 
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_add"
-                app:tint="@color/black"/>
+                app:tint="@color/black" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -550,35 +552,37 @@
                 android:text="Ride"
                 android:textSize="12sp"
                 android:textColor="@color/black"
-                android:layout_marginTop="4dp"/>
+                android:layout_marginTop="4dp" />
         </LinearLayout>
 
-        <!-- Menu Tab -->
+        <!-- Profile Tab -->
         <LinearLayout
-            android:id="@+id/tab_menu"
+            android:id="@+id/tab_profile"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
             android:clickable="true"
-            android:focusable="true">
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
 
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:src="@drawable/ic_calendar"
-                app:tint="@color/black"/>
+                android:src="@drawable/ic_profile"
+                app:tint="@color/black" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Menu"
+                android:text="Profile"
                 android:textSize="12sp"
                 android:textColor="@color/black"
-                android:layout_marginTop="4dp"/>
+                android:layout_marginTop="4dp" />
         </LinearLayout>
 
     </LinearLayout>
+
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

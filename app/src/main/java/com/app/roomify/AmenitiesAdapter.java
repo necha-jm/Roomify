@@ -51,6 +51,7 @@ public class AmenitiesAdapter extends RecyclerView.Adapter<AmenitiesAdapter.Amen
 
     @Override
     public int getItemCount() {
+
         return amenities != null ? amenities.size() : 0;
     }
 

@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -44,17 +43,11 @@ import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 
 public class PostRoomActivity extends AppCompatActivity {
 
@@ -98,6 +91,8 @@ public class PostRoomActivity extends AppCompatActivity {
 
     // Firebase
     private FirebaseFirestore db;
+
+  private   String roomId;
     private Marker locationMarker;
 
     @Override
@@ -630,6 +625,8 @@ public class PostRoomActivity extends AppCompatActivity {
                     showLoading(false);
                     // Trigger notification
                     sendRoomNotification(); //
+                    notifyBackendForNewRoom(); // <-- trigger notification here
+
                     Log.d(TAG, "Room saved successfully!");
 
                     new MaterialAlertDialogBuilder(this)
@@ -650,6 +647,27 @@ public class PostRoomActivity extends AppCompatActivity {
                     showError("Failed to post: " + e.getMessage());
                     Log.e(TAG, "Firestore error: " + e.getMessage(), e);
                 });
+    }
+
+
+
+    private void notifyBackendForNewRoom() {
+        new Thread(() -> {
+            try {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url("http://10.0.2.2:8080/notify-new-room?roomId=" + roomId)
+                        .post(okhttp3.RequestBody.create(new byte[0]))
+                        .build();
+
+                okhttp3.Response response = client.newCall(request).execute();
+                Log.d("BackendNotify", "Response: " + response.body().string());
+
+            } catch (Exception e) {
+                Log.e("BackendNotify", "Error notifying backend: " + e.getMessage());
+            }
+        }).start();
     }
 
     private void showLoading(boolean show) {

@@ -72,7 +72,6 @@
     <string name="discover_places">Discover Places</string>
 
 
-
     <string name="password">password</string>
     <string name="email1">Email</string>
     <string name="welcome_back">Welcome Back</string>
@@ -83,4 +82,10 @@
     <string name="log_out">log out</string>
     <string name="banner_ad_unit_id">ca-app-pub-3940256099942544/6300978111</string>
     <string name="default_web_client_id">1041914574744-evaa3p91lu43jr5crr42esqrivkha66m.apps.googleusercontent.com</string>
+    <string name="taarifa_binafsi">Taarifa binafsi</string>
+    <string name="usalama">Usalama</string>
+    <string name="maeneo_yaliyohifadhiwa">Maeneo yaliyohifadhiwa</string>
+    <string name="nyumbani">Nyumbani</string>
+    <string name="gundua">Gundua</string>
+    <string name="akaunti">Akaunti</string>
 </resources>

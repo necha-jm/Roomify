@@ -1,6 +1,5 @@
 package com.app.roomify;
 
-import static android.content.ContentValues.TAG;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -13,14 +12,8 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -146,7 +139,7 @@ public class LoginActivity extends AppCompatActivity {
         // Google Sign-In button
         googleButton.setOnClickListener(v -> {
             animateButton(v);
-            new Handler().postDelayed(this::signInWithGoogle, 200);
+            new Handler().postDelayed(this::signInWithGoogle, 50);
         });
 
         // Forgot password
@@ -382,6 +375,7 @@ public class LoginActivity extends AppCompatActivity {
         guestButton.setEnabled(!show);
         signUpButton.setEnabled(!show);
         googleButton.setEnabled(!show);
+
     }
 
     private void goToDashboard() {

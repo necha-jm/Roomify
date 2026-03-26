@@ -112,7 +112,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private Chip chipEnglish;
     private Chip chipSwahili;
     private ImageView btnSettings;
-    private LinearLayout bottomSheet;
+    private LinearLayout bottomSheet,tab_menu;
     private BottomSheetBehavior<LinearLayout> bottomSheetBehavior;
 
     private LocationCallback locationCallback;
@@ -241,10 +241,12 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
             // Quick action cards
             apartmentCard = findViewById(R.id.apartment_card);
+
             apartmentIcon = findViewById(R.id.apartment);
             addRoomCard = findViewById(R.id.addRoom_card);
             languageCard = findViewById(R.id.language_card);
             tab_profile = findViewById(R.id.tab_profile);
+            tab_menu = findViewById(R.id.tab_menu);
 
             // Language selection
             languageSelection = findViewById(R.id.language_selection);
@@ -312,6 +314,22 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 });
             }
 
+            //HOME
+
+            if(tab_menu !=null){
+                tab_menu.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        try{
+                            Intent intent = new Intent(LocationMap.this, LocationMap.class);
+                            startActivity(intent);
+                        } catch (Exception e){
+                            Log.e(TAG,"mistake:"+e.getMessage());
+                        }
+                    }
+                });
+            }
+
             // Language card click - toggle language selection
             if (languageCard != null) {
                 languageCard.setOnClickListener(v -> {
@@ -344,7 +362,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
             if (tab_profile != null) {
                 tab_profile.setOnClickListener(v -> {
-                    AuthManager.logoutUser(this, mAuth, googleSignInClient);
+                    Intent intent = new Intent(this, ProfileActivity.class);
+                    startActivity(intent);
+
+                    // AuthManager.logoutUser(this, mAuth, googleSignInClient);
                 });
             }
 

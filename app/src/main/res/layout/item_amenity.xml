@@ -26,7 +26,7 @@
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:scaleType="fitCenter"
-                android:tint="@color/primary" />
+                app:tint="@color/primary" />
 
         </LinearLayout>
 

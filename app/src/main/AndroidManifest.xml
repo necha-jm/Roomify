@@ -27,15 +27,17 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Roomify">
+        <activity
+            android:name=".ProfileActivity"
+            android:exported="false" />
+
         <service
             android:name=".MyFirebaseMessagingService"
             android:enabled="true"
             android:exported="true">
-
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
-
         </service>
 
         <activity
@@ -46,9 +48,7 @@
             android:name=".ContactContentProvider"
             android:authorities="com.app.roomify.provider"
             android:enabled="true"
-            android:exported="true">
-
-        </provider>
+            android:exported="true"></provider>
 
         <activity
             android:name=".NoInternetActivity"
