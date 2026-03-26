@@ -131,7 +131,7 @@ public class LoginActivity extends AppCompatActivity {
         signUpButton.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(() -> {
-                startActivity(new Intent(LoginActivity.this, LocationMap.class));
+                startActivity(new Intent(LoginActivity.this, RegisterActivity.class));
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
             }, 200);
         });
@@ -139,7 +139,7 @@ public class LoginActivity extends AppCompatActivity {
         // Google Sign-In button
         googleButton.setOnClickListener(v -> {
             animateButton(v);
-            new Handler().postDelayed(this::signInWithGoogle, 50);
+            new Handler().postDelayed(this::signInWithGoogle, 200);
         });
 
         // Forgot password
@@ -205,10 +205,14 @@ public class LoginActivity extends AppCompatActivity {
                                         Toast.LENGTH_SHORT).show();
                                 goToDashboard();
                             } else {
+
+
                                 Toast.makeText(LoginActivity.this,
-                                        "Please verify your email address. Verification email sent.",
+                                        "Verification email sent. Please check your email and login again.",
                                         Toast.LENGTH_LONG).show();
-                                user.sendEmailVerification();
+
+                                // LOGOUT USER (IMPORTANT)
+                                mAuth.signOut();
                             }
                         }
                     } else {
@@ -391,7 +395,7 @@ public class LoginActivity extends AppCompatActivity {
         super.onStart();
         // Check if user is already signed in
         FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser != null && !currentUser.isAnonymous()) {
+        if (currentUser != null && currentUser.isAnonymous()) {
             goToDashboard();
         }
     }

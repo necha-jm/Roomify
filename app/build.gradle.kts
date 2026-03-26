@@ -71,16 +71,21 @@ dependencies {
     implementation("androidx.preference:preference:1.2.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("com.google.firebase:firebase-messaging:23.4.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.firebase:firebase-firestore-ktx")
+
 
 
     // Firebase BoM and dependencies
-    implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
+    implementation (platform("com.google.firebase:firebase-bom:33.10.0"))
+
     implementation("com.google.firebase:firebase-database")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-storage")
     implementation("com.google.android.gms:play-services-auth:20.7.0")
+
+// Optional: Firebase Messaging if you send notifications
+    implementation ("com.google.firebase:firebase-messaging")
 
 
 

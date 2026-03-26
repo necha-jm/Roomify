@@ -8,27 +8,27 @@ import android.location.Geocoder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.firestore.DocumentSnapshot;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class RoomDetailsActivity extends AppCompatActivity {
 
@@ -43,7 +43,11 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
     private FusedLocationProviderClient fusedLocationClient;
 
+    private Button btnBookNow;
+
     private RecyclerView Amenities;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,6 +71,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
         btnContactOwner = findViewById(R.id.btnCallOwner);
         tvBedrooms = findViewById(R.id.tvBedrooms);
         tvPostedDate = findViewById(R.id.tvPostedDate);
+        btnBookNow = findViewById(R.id.btnBookNow);
 
 
         // Initialize location client
@@ -78,6 +83,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
         // Button listeners
         btnGetDirections.setOnClickListener(v -> openDirections());
         btnContactOwner.setOnClickListener(v -> contactRoomOwner());
+        btnBookNow.setOnClickListener(v -> requestRoomBooking());
     }
 
     private void loadRoomDetails() {
@@ -137,6 +143,56 @@ public class RoomDetailsActivity extends AppCompatActivity {
         } catch (IOException e) {
             Log.e(TAG, "Geocoder error: " + e.getMessage());
         }
+    }
+
+
+
+
+    private void requestRoomBooking() {
+        // Get current user ID
+        String userId = FirebaseUtils.getCurrentUserId();
+        if (userId == null) {
+            Toast.makeText(this, "Please login to request booking", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Get current user's name
+        FirebaseUtils.getCurrentUserName(userName -> {
+            if (userName == null) userName = "Unknown"; // fallback
+
+            // Get current user's phone
+            String finalUserName = userName;
+            FirebaseUtils.getCurrentUserPhone(userPhone -> {
+                if (userPhone == null) userPhone = "Not provided"; // fallback
+
+                // Prepare booking data
+                Map<String, Object> bookingData = new HashMap<>();
+                bookingData.put("userId", userId);
+                bookingData.put("userPhone", userPhone);
+                bookingData.put("status", "pending");
+                bookingData.put("timestamp", System.currentTimeMillis());
+
+                // Save booking to Firestore
+                FirebaseUtils.getRoomBookingsCollection(roomId)
+                        .add(bookingData)
+                        .addOnSuccessListener(docRef -> {
+                            Toast.makeText(this, "Booking request sent!", Toast.LENGTH_SHORT).show();
+                            // Notify room owner
+                            sendOwnerNotification(docRef.getId(), finalUserName);
+                        })
+                        .addOnFailureListener(e -> {
+                            Toast.makeText(this, "Failed to send booking request", Toast.LENGTH_SHORT).show();
+                        });
+            });
+        });
+    }
+
+    // Updated sendOwnerNotification to accept username
+    private void sendOwnerNotification(String bookingId, String userName) {
+        String title = "New Booking Request";
+        String message = "User " + userName + " requested to book your room: " + tvTitle.getText();
+
+        FirebaseUtils.sendNotificationToUser(ownerId, title, message, bookingId);
     }
 
     private void openDirections() {

@@ -28,6 +28,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Roomify">
         <activity
+            android:name=".RegisterActivity"
+            android:exported="false" />
+        <activity
             android:name=".ProfileActivity"
             android:exported="false" />
 
@@ -48,7 +51,7 @@
             android:name=".ContactContentProvider"
             android:authorities="com.app.roomify.provider"
             android:enabled="true"
-            android:exported="true"></provider>
+            android:exported="true" />
 
         <activity
             android:name=".NoInternetActivity"

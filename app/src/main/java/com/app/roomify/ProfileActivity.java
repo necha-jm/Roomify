@@ -1,6 +1,11 @@
 package com.app.roomify;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -8,6 +13,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.auth.FirebaseAuth;
 
 public class ProfileActivity extends AppCompatActivity {
@@ -16,6 +22,14 @@ public class ProfileActivity extends AppCompatActivity {
     private GoogleSignInClient googleSignInClient;
 
     private BottomNavigationView bottom_nav;
+
+    private LinearLayout logout;
+
+    private TextView profileName;
+
+    private ImageView profileImage;
+    private FloatingActionButton fabAddPhoto;
+    private static final int PICK_IMAGE = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,13 +48,42 @@ public class ProfileActivity extends AppCompatActivity {
 //firebase
         mAuth = FirebaseAuth.getInstance();
 
+        logout = findViewById(R.id.logout);
+
 
         // Initialize GoogleSignInClient
         googleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN);
 
         bottom_nav = findViewById(R.id.bottom_nav);
+        profileName = findViewById(R.id.profileName);
+        profileImage = findViewById(R.id.profileImage);
+        fabAddPhoto = findViewById(R.id.fabAddPhoto);
 
 
+        if (mAuth.getCurrentUser() != null) {
+            String name = mAuth.getCurrentUser().getDisplayName();
+            String email = mAuth.getCurrentUser().getEmail();
+
+            if (name != null && !name.isEmpty()) {
+                profileName.setText(name); // Google users
+            } else if (email != null) {
+                profileName.setText(email); // Email users fallback
+            } else {
+                profileName.setText("Guest User");
+            }
+        }
+
+
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+            Uri imageUri = data.getData();
+            profileImage.setImageURI(imageUri);
+        }
     }
 
     private void listerner(){
@@ -69,5 +112,20 @@ public class ProfileActivity extends AppCompatActivity {
             return false;
         });
 
+        if(logout != null){
+            logout.setOnClickListener(v -> {
+                AuthManager.logoutUser(this, mAuth, googleSignInClient);
+
+            });
+        }
+
+        fabAddPhoto.setOnClickListener(v -> openGallery());
+
+    }
+
+    private void openGallery(){
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType("image/*");
+        startActivityForResult(intent, PICK_IMAGE);
     }
 }
