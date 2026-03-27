@@ -2,6 +2,7 @@ package com.app.roomify;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -28,6 +29,8 @@ public class ProfileActivity extends AppCompatActivity {
     private TextView profileName;
 
     private ImageView profileImage;
+
+    private Button request;
     private FloatingActionButton fabAddPhoto;
     private static final int PICK_IMAGE = 1;
 
@@ -58,6 +61,7 @@ public class ProfileActivity extends AppCompatActivity {
         profileName = findViewById(R.id.profileName);
         profileImage = findViewById(R.id.profileImage);
         fabAddPhoto = findViewById(R.id.fabAddPhoto);
+        request = findViewById(R.id.request);
 
 
         if (mAuth.getCurrentUser() != null) {
@@ -120,6 +124,12 @@ public class ProfileActivity extends AppCompatActivity {
         }
 
         fabAddPhoto.setOnClickListener(v -> openGallery());
+        request.setOnClickListener(v -> {
+            // In your owner dashboard
+            Intent userIntent = new Intent(this, BookingRequestsActivity.class);
+            userIntent.putExtra("role", "tenant");
+            startActivity(userIntent);
+        });
 
     }
 
