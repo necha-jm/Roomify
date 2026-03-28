@@ -46,6 +46,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
     private Button btnBookNow;
 
+    private boolean alreadyRequested = false;
+
     private RecyclerView Amenities;
 
 
@@ -84,7 +86,37 @@ public class RoomDetailsActivity extends AppCompatActivity {
         // Button listeners
         btnGetDirections.setOnClickListener(v -> openDirections());
         btnContactOwner.setOnClickListener(v -> contactRoomOwner());
-        btnBookNow.setOnClickListener(v -> requestRoomBooking());
+        btnBookNow.setOnClickListener(v -> {
+            if (alreadyRequested) {
+                Toast.makeText(this, "You already requested this room", Toast.LENGTH_SHORT).show();
+            } else {
+                requestRoomBooking();
+            }
+        });
+
+
+        //  CHECK IF USER ALREADY REQUESTED
+        checkIfAlreadyRequested();
+    }
+
+    // CHECK EXISTING BOOKING
+    private void checkIfAlreadyRequested() {
+        String userId = FirebaseUtils.getCurrentUserId();
+        if (userId == null) return;
+
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("bookings")
+                .whereEqualTo("roomId", roomId)
+                .get()
+                .addOnSuccessListener(query -> {
+                    if (!query.isEmpty()) {
+                        alreadyRequested = true;
+                        btnBookNow.setEnabled(false);
+                        btnBookNow.setText("Already Requested");
+                    }
+                });
     }
 
     private void loadRoomDetails() {

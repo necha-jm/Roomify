@@ -70,6 +70,7 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 
@@ -131,7 +132,11 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private FirebaseAuth mAuth;
     private GoogleSignInClient googleSignInClient;
 
+    private List<String> requestedRoomIds = new ArrayList<>();
     private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
+
+    // Track booking status per room
+    private Map<String, String> roomBookingStatus = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -143,6 +148,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         // Initialize GoogleSignInClient
         googleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN);
+
+        listenToUserBookings();
 
         contact = findViewById(R.id.contact);
 
@@ -220,6 +227,69 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         IntentFilter gpsFilter = new IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION);
         registerReceiver(gpsStatusReceiver, gpsFilter);
+    }
+
+    //requested room
+    private void loadUserRequestedRooms(Runnable callback) {
+        String userId = FirebaseUtils.getCurrentUserId();
+
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("bookings")
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+
+                    requestedRoomIds.clear();
+
+                    for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                        String roomId = doc.getString("roomId");
+                        if (roomId != null) {
+                            requestedRoomIds.add(roomId);
+                        }
+                    }
+
+                    Log.d(TAG, "User has requested " + requestedRoomIds.size() + " rooms");
+
+                    if (callback != null) callback.run();
+                });
+    }
+
+    //real refresh
+    private void listenToUserBookings() {
+        String userId = FirebaseUtils.getCurrentUserId();
+
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("bookings")
+                .addSnapshotListener((snapshots, error) -> {
+
+                    if (error != null) {
+                        Log.e(TAG, "Error loading bookings", error);
+                        return;
+                    }
+
+                    roomBookingStatus.clear();
+
+                    if (snapshots != null) {
+                        for (DocumentSnapshot doc : snapshots.getDocuments()) {
+                            String roomId = doc.getString("roomId");
+                            String status = doc.getString("status");
+
+                            if (roomId != null && status != null) {
+                                roomBookingStatus.put(roomId, status);
+                            }
+                        }
+                    }
+
+                    Log.d(TAG, "Booking status updated: " + roomBookingStatus.size());
+
+                    // 🔥 Refresh map automatically
+                    if (myMap != null) {
+                        loadRoomsOnMap();
+                    }
+                });
     }
 
     private void initializeViews() {
@@ -927,10 +997,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                             Room room = doc.toObject(Room.class);
                             room.setId(doc.getId());
 
-                            if (room.getLatitude() == 0 || room.getLongitude() == 0) {
-                                Log.w(TAG, "Room " + room.getId() + " has invalid coordinates");
-                                continue;
-                            }
+                            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
 
                             roomsList.add(room);
 
@@ -938,25 +1005,50 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                                     room.getLatitude(),
                                     room.getLongitude());
 
-                            Bitmap originalBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_apartment);
-                            Bitmap resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, 40, 40, false);
+                            String status = roomBookingStatus.get(room.getId());
+
+                            float markerColor = BitmapDescriptorFactory.HUE_BLUE;
+                            String snippet = "Price: $" + room.getPrice();
+
+                            if (status != null) {
+                                switch (status) {
+                                    case "pending":
+                                        markerColor = BitmapDescriptorFactory.HUE_ORANGE;
+                                        snippet = "⚠️ Requested";
+                                        break;
+
+                                    case "approved":
+                                        markerColor = BitmapDescriptorFactory.HUE_GREEN;
+                                        snippet = "✅ Approved";
+                                        break;
+
+                                    case "rejected":
+                                        markerColor = BitmapDescriptorFactory.HUE_RED;
+                                        snippet = "❌ Rejected";
+                                        break;
+
+                                    case "cancelled":
+                                        markerColor = BitmapDescriptorFactory.HUE_VIOLET;
+                                        snippet = "Cancelled";
+                                        break;
+                                }
+                            }
 
                             Marker marker = myMap.addMarker(
                                     new MarkerOptions()
                                             .position(roomLocation)
                                             .title(room.getTitle())
-                                            .snippet("Price: $" + room.getPrice())
-                                            .icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap))
+                                            .snippet(snippet)
+                                            .icon(BitmapDescriptorFactory.defaultMarker(markerColor))
                             );
 
                             if (marker != null) {
-                                // FIX 4: Add tag as backup identifier
                                 marker.setTag(room.getId());
                                 markerRoomMap.put(marker, room);
-                                Log.d(TAG, "Added marker for room: " + room.getId() + " at " + roomLocation);
                             }
+
                         } catch (Exception e) {
-                            Log.e(TAG, "Error processing room document: " + e.getMessage());
+                            Log.e(TAG, "Error processing room", e);
                         }
                     }
 

@@ -123,7 +123,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Mpango kabambe wa safari"
+                        android:text=" Request area"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="@color/primary_teal_dark" />
@@ -132,7 +132,6 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="Pata mapendekezo ya safari kulingana na matukio kwenye kalenda yako"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:lineSpacingExtra="2dp" />
@@ -160,7 +159,6 @@
                 android:layout_marginStart="16dp"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="12dp"
-                android:text="Mipangilio"
                 android:textSize="14sp"
                 android:textColor="@color/text_gray"
                 android:textAllCaps="true"
