@@ -106,6 +106,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private EditText searchEditText;
     private FloatingActionButton fabLocation;
     private MaterialCardView apartmentCard;
+
+    private boolean hasShownLocationDialog = false;
     private ImageView apartmentIcon;
     private MaterialCardView addRoomCard;
     private MaterialCardView languageCard;
@@ -729,16 +731,27 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private void promptEnableLocation() {
         new AlertDialog.Builder(this)
                 .setTitle("Enable Location")
-                .setMessage("Location is required to use this app. Please turn on GPS.")
-                .setCancelable(false)
+                .setMessage("Location helps you find nearby rooms faster. You can continue without it.")
+                .setCancelable(true)
+
                 .setPositiveButton("Turn On", (dialog, which) -> {
                     Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
                     startActivity(intent);
                 })
-                .setNegativeButton("Cancel", (dialog, which) -> {
-                    Toast.makeText(this, "Location is required for map features", Toast.LENGTH_SHORT).show();
+
+                .setNegativeButton("Continue Without Location", (dialog, which) -> {
+                    Toast.makeText(this,
+                            "Showing default location (Dar es Salaam)",
+                            Toast.LENGTH_SHORT).show();
+
                     loadMapWithoutLocation();
                 })
+
+                .setNeutralButton("Cancel", (dialog, which) -> {
+                    dialog.dismiss();
+                    loadMapWithoutLocation();
+                })
+
                 .show();
     }
 
@@ -769,17 +782,24 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             locationCallback = new LocationCallback() {
                 @Override
                 public void onLocationResult(@NonNull LocationResult locationResult) {
-                    if (locationResult == null) return;
-
                     for (Location location : locationResult.getLocations()) {
-                        if (location == null) continue;
 
-                        if (location.hasAccuracy() && location.getAccuracy() < 50) {
-                            updateCurrentLocation(location);
-                            break;
-                        } else if (currentLocation == null) {
-                            updateCurrentLocation(location);
+                        currentLocation = location;
+
+                        LatLng latLng = new LatLng(
+                                location.getLatitude(),
+                                location.getLongitude()
+                        );
+
+                        if (currentLocationMarker == null) {
+                            currentLocationMarker = myMap.addMarker(
+                                    new MarkerOptions().position(latLng).title("You")
+                            );
+                        } else {
+                            currentLocationMarker.setPosition(latLng);
                         }
+
+                        myMap.animateCamera(CameraUpdateFactory.newLatLng(latLng));
                     }
                 }
             };
@@ -796,6 +816,13 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             currentLocation = location;
             runOnUiThread(() -> updateCurrentLocationMarker(location));
         }
+    }
+
+
+    private float calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        float[] results = new float[1];
+        Location.distanceBetween(lat1, lon1, lat2, lon2, results);
+        return results[0]; // meters
     }
 
     private void updateCurrentLocationMarker(Location location) {
@@ -930,6 +957,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
     // FIXED: Properly managed room loading without interfering with location marker
     private void loadRoomsOnMap() {
+
+
         if (db == null) {
             Log.e(TAG, "Firestore db is null");
             return;
@@ -988,7 +1017,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                     }
 
                     // Add room markers
-                    for (QueryDocumentSnapshot doc : snapshots) {
+                    for (DocumentSnapshot doc : snapshots.getDocuments()) {
                         try {
                             Room room = doc.toObject(Room.class);
                             room.setId(doc.getId());
@@ -997,9 +1026,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
                             roomsList.add(room);
 
-                            LatLng roomLocation = new LatLng(
-                                    room.getLatitude(),
-                                    room.getLongitude());
+                            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
 
                             String status = roomBookingStatus.get(room.getId());
 
@@ -1012,17 +1039,14 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                                         markerColor = BitmapDescriptorFactory.HUE_ORANGE;
                                         snippet = "⚠️ Requested";
                                         break;
-
                                     case "approved":
                                         markerColor = BitmapDescriptorFactory.HUE_GREEN;
                                         snippet = "✅ Approved";
                                         break;
-
                                     case "rejected":
                                         markerColor = BitmapDescriptorFactory.HUE_RED;
                                         snippet = "❌ Rejected";
                                         break;
-
                                     case "cancelled":
                                         markerColor = BitmapDescriptorFactory.HUE_VIOLET;
                                         snippet = "Cancelled";
@@ -1047,7 +1071,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                             Log.e(TAG, "Error processing room", e);
                         }
                     }
-
                     Log.d(TAG, "Loaded " + roomsList.size() + " rooms with " + markerRoomMap.size() + " markers");
 
                     // FIX 5: Debug verification
@@ -1121,31 +1144,28 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d(TAG, "onResume called");
 
-        if (isLocationEnabled()) {
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
-
-                if (currentLocation == null) {
-                    getLastLocationWithTimeout();
-                }
-
-                startLocationUpdates();
-
-            } else {
-                requestLocationPermission();
+        if (!isLocationEnabled()) {
+            if (!hasShownLocationDialog) {
+                promptEnableLocation();
+                hasShownLocationDialog = true;
             }
-        } else {
-            promptEnableLocation();
+            loadMapWithoutLocation();
+            return;
         }
 
-        if (myMap != null && shouldRefreshRooms) {
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                loadRoomsOnMap();
-                shouldRefreshRooms = false;
-            }, 500);
+        // Normal flow
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+
+            if (currentLocation == null) {
+                getLastLocationWithTimeout();
+            }
+
+            startLocationUpdates();
+        } else {
+            requestLocationPermission();
         }
     }
 

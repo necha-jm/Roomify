@@ -64,6 +64,30 @@ public class LoginActivity extends AppCompatActivity {
         mAuth = FirebaseAuth.getInstance();
         db = FirebaseFirestore.getInstance();
 
+
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+
+        if (currentUser != null) {
+
+            // Reload user to get latest verification status
+            currentUser.reload().addOnCompleteListener(task -> {
+
+                if (currentUser.isEmailVerified() || currentUser.isAnonymous()) {
+
+                    // User already logged in → skip login screen
+                    goToDashboard();
+
+                } else {
+                    // User exists but not verified
+                    Toast.makeText(this,
+                            "Please verify your email first",
+                            Toast.LENGTH_SHORT).show();
+
+                    mAuth.signOut(); // force login again
+                }
+            });
+        }
+
         // Initialize views
         initViews();
 
@@ -78,6 +102,7 @@ public class LoginActivity extends AppCompatActivity {
 
         // Setup click listeners
         setupClickListeners();
+
     }
 
     private void initViews() {

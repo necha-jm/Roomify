@@ -12,6 +12,9 @@ import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.airbnb.lottie.LottieAnimationView;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -26,23 +29,69 @@ public class SplashActivity extends AppCompatActivity {
         lottieAnimationView = findViewById(R.id.lottieAnimation);
 
         // Wait 6 seconds for splash animation
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (isInternetAvailable()) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
 
-                // Internet OK → open intended screen
-                Intent intent = new Intent(SplashActivity.this, LoginActivity.class);
-                startActivity(intent);
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+
+            if (!isInternetAvailable()) {
+                startActivity(new Intent(this, NoInternetActivity.class));
+                finish();
+                return;
+            }
+
+            if (user != null) {
+
+                user.reload().addOnCompleteListener(task -> {
+
+                    if (user.isAnonymous()) {
+                        // Guest → go to map
+                        startActivity(new Intent(this, LocationMap.class));
+                        finish();
+                        return;
+                    }
+
+                    if (!user.isEmailVerified()) {
+                        FirebaseAuth.getInstance().signOut();
+                        startActivity(new Intent(this, LoginActivity.class));
+                        finish();
+                        return;
+                    }
+
+                    // NOW CHECK ROLE FROM FIRESTORE
+                    FirebaseFirestore.getInstance()
+                            .collection("users")
+                            .document(user.getUid())
+                            .get()
+                            .addOnSuccessListener(documentSnapshot -> {
+
+                                if (documentSnapshot.exists()) {
+
+                                    String role = documentSnapshot.getString("role");
+
+                                    if ("owner".equals(role)) {
+                                        startActivity(new Intent(this, ProfileActivity.class));
+                                    } else {
+                                        startActivity(new Intent(this, LocationMap.class));
+                                    }
+
+                                } else {
+                                    // No user data → force login
+                                    FirebaseAuth.getInstance().signOut();
+                                    startActivity(new Intent(this, LoginActivity.class));
+                                }
+
+                                finish();
+                            });
+
+                });
 
             } else {
-
-                // No internet → open blocking screen
-                Intent intent = new Intent(SplashActivity.this, NoInternetActivity.class);
-                startActivity(intent);
+                startActivity(new Intent(this, LoginActivity.class));
+                finish();
             }
-            finish();
-            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
 
-        }, 6000);
+        }, 3000);
+       // 3 seconds is enough
     }
 
     @Override
