@@ -66,6 +66,9 @@
                 android:textSize="16sp"
                 android:imeOptions="actionSearch"
                 android:maxLines="1"
+                android:layout_gravity="top"
+                android:elevation="12dp"
+                android:translationZ="12dp"
                 android:fontFamily="sans-serif"
                 android:textColorHint="@color/text_secondary" />
 

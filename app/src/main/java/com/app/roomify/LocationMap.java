@@ -531,13 +531,20 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void performGeocodeSearch(String query) {
+
         if (query.isEmpty()) {
             Toast.makeText(this, "Enter a location to search", Toast.LENGTH_SHORT).show();
             return;
         }
 
+
         if (myMap == null) {
             Toast.makeText(this, "Map is not ready yet", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!Geocoder.isPresent()) {
+            Toast.makeText(this, "Geocoder not supported", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -546,13 +553,16 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 Geocoder geocoder = new Geocoder(this, Locale.getDefault());
                 List<Address> addresses = geocoder.getFromLocationName(query, 1);
 
-                if (addresses != null && !addresses.isEmpty()) {
-                    Address address = addresses.get(0);
-                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
-                    runOnUiThread(() -> {
+                Log.d("SEARCH", "Query: " + query);
+                Log.d("SEARCH", "Result: " + addresses);
+
+                runOnUiThread(() -> {
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address address = addresses.get(0);
+                        LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+
                         myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
 
-                        // Add or move search marker
                         if (searchMarker == null) {
                             searchMarker = myMap.addMarker(new MarkerOptions()
                                     .position(latLng)
@@ -565,31 +575,17 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         }
 
                         Toast.makeText(this, "Found: " + query, Toast.LENGTH_SHORT).show();
-                    });
-                } else {
-                    runOnUiThread(() -> Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show());
-                }
+                    } else {
+                        Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show();
+                    }
+                });
+
             } catch (IOException e) {
-                runOnUiThread(() -> Toast.makeText(this, "Geocoder error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show()
+                );
             }
         }).start();
-    }
-
-    private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager =
-                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-
-        if (connectivityManager != null) {
-            NetworkCapabilities capabilities =
-                    connectivityManager.getNetworkCapabilities(connectivityManager.getActiveNetwork());
-
-            return capabilities != null && (
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-            );
-        }
-        return false;
     }
 
     private void addSearchResultMarker(LatLng latLng, String title) {

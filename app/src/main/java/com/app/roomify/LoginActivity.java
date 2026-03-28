@@ -1,6 +1,5 @@
 package com.app.roomify;
 
-
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.content.Intent;
@@ -12,8 +11,10 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -22,12 +23,15 @@ import com.google.android.gms.common.SignInButton;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -35,25 +39,36 @@ public class LoginActivity extends AppCompatActivity {
     private static final String TAG = "LoginActivity";
 
     private FirebaseAuth mAuth;
+    private FirebaseFirestore db;
     private GoogleSignInClient googleSignInClient;
 
+    // Views
     private TextInputLayout emailLayout, passwordLayout;
     private TextInputEditText emailEditText, passwordEditText;
-    private MaterialButton signInButton;
+    private MaterialButton btnSignIn;
+    private Chip chipTenantLogin, chipOwnerLogin;
+    private TextView tvRoleHint;
     private MaterialButton guestButton, signUpButton;
     private SignInButton googleButton;
     private CardView cardView;
     private View loadingOverlay;
 
+    private String selectedRole = "tenant"; // Default role
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
-        // Initialize Firebase Auth
+
+        // Initialize Firebase
         mAuth = FirebaseAuth.getInstance();
+        db = FirebaseFirestore.getInstance();
 
         // Initialize views
         initViews();
+
+        // Set up role selection
+        setupRoleSelection();
 
         // Setup animations
         setupAnimations();
@@ -70,12 +85,42 @@ public class LoginActivity extends AppCompatActivity {
         passwordLayout = findViewById(R.id.passwordLayout);
         emailEditText = findViewById(R.id.Email);
         passwordEditText = findViewById(R.id.password);
-        signInButton = findViewById(R.id.button2);
+        btnSignIn = findViewById(R.id.button2);
+        chipTenantLogin = findViewById(R.id.chipTenantLogin);
+        chipOwnerLogin = findViewById(R.id.chipOwnerLogin);
+        tvRoleHint = findViewById(R.id.tvRoleHint);
         guestButton = findViewById(R.id.Register);
         signUpButton = findViewById(R.id.Signup);
         googleButton = findViewById(R.id.Google);
         cardView = findViewById(R.id.cardView);
+        loadingOverlay = findViewById(R.id.loadingOverlay); // Make sure you have this in your layout
+    }
 
+    private void setupRoleSelection() {
+        // Set tenant as default checked
+        chipTenantLogin.setChecked(true);
+        selectedRole = "tenant";
+        tvRoleHint.setText("You are logging in as a Tenant");
+
+        // Tenant selected
+        chipTenantLogin.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                selectedRole = "tenant";
+                chipOwnerLogin.setChecked(false);
+                tvRoleHint.setText("You are logging in as a Tenant");
+                tvRoleHint.setTextColor(getColor(R.color.primary_green));
+            }
+        });
+
+        // Owner selected
+        chipOwnerLogin.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                selectedRole = "owner";
+                chipTenantLogin.setChecked(false);
+                tvRoleHint.setText("You are logging in as an Owner");
+                tvRoleHint.setTextColor(getColor(R.color.primary_green));
+            }
+        });
     }
 
     private void setupAnimations() {
@@ -88,7 +133,7 @@ public class LoginActivity extends AppCompatActivity {
                 .setDuration(800)
                 .start();
 
-        // Scale animation for logo (add this if you have an ImageView for logo)
+        // Scale animation for logo
         View logo = findViewById(R.id.logo);
         if (logo != null) {
             Animation scaleAnimation = AnimationUtils.loadAnimation(this, android.R.anim.fade_in);
@@ -116,7 +161,7 @@ public class LoginActivity extends AppCompatActivity {
 
     private void setupClickListeners() {
         // Sign In button
-        signInButton.setOnClickListener(v -> {
+        btnSignIn.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(this::signInWithEmailAndPassword, 200);
         });
@@ -199,31 +244,61 @@ public class LoginActivity extends AppCompatActivity {
                         FirebaseUser user = mAuth.getCurrentUser();
 
                         if (user != null) {
+                            // Check if email is verified
                             if (user.isEmailVerified()) {
-                                Toast.makeText(LoginActivity.this,
-                                        "Welcome back, " + user.getEmail(),
-                                        Toast.LENGTH_SHORT).show();
-                                goToDashboard();
+                                // Update emailVerified status in Firestore
+                                updateEmailVerifiedStatus(user.getUid());
+                                // Check user role before navigating
+                                checkUserRoleAndNavigate(user.getUid());
                             } else {
-
-
+                                // Email not verified - show message and sign out
                                 Toast.makeText(LoginActivity.this,
-                                        "Verification email sent. Please check your email and login again.",
+                                        "Please verify your email address. A verification email has been sent to " + email,
                                         Toast.LENGTH_LONG).show();
 
-                                // LOGOUT USER (IMPORTANT)
+                                // Resend verification email
+                                user.sendEmailVerification()
+                                        .addOnCompleteListener(verifyTask -> {
+                                            if (verifyTask.isSuccessful()) {
+                                                Toast.makeText(LoginActivity.this,
+                                                        "Verification email resent. Please check your inbox.",
+                                                        Toast.LENGTH_SHORT).show();
+                                            }
+                                        });
+
                                 mAuth.signOut();
                             }
                         }
                     } else {
                         Log.w(TAG, "signInWithEmail:failure", task.getException());
-                        Toast.makeText(LoginActivity.this,
-                                "Authentication failed: " + task.getException().getMessage(),
-                                Toast.LENGTH_LONG).show();
+
+                        // Handle specific error cases
+                        String errorMessage = task.getException().getMessage();
+                        if (errorMessage != null) {
+                            if (errorMessage.contains("password")) {
+                                passwordLayout.setError("Incorrect password");
+                            } else if (errorMessage.contains("email")) {
+                                emailLayout.setError("Email not found");
+                            } else {
+                                Toast.makeText(LoginActivity.this,
+                                        "Authentication failed: " + errorMessage,
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        }
                     }
                 });
     }
 
+    private void updateEmailVerifiedStatus(String userId) {
+        db.collection("users").document(userId)
+                .update("emailVerified", true)
+                .addOnSuccessListener(aVoid -> {
+                    Log.d(TAG, "Email verified status updated");
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to update email verified status", e);
+                });
+    }
     private void signInAsGuest() {
         showLoading(true);
 
@@ -306,44 +381,6 @@ public class LoginActivity extends AppCompatActivity {
         }
     }
 
-
-    public void logoutUser() {
-
-        // Show loading (optional)
-        showLoading(true);
-
-        // 1. Firebase logout
-        if (mAuth != null) {
-            mAuth.signOut();
-        }
-
-        // 2. Google logout (IMPORTANT)
-        if (googleSignInClient != null) {
-            googleSignInClient.signOut().addOnCompleteListener(this, task -> {
-
-                showLoading(false);
-
-                Toast.makeText(LoginActivity.this,
-                        "Logged out successfully",
-                        Toast.LENGTH_SHORT).show();
-
-                // 3. Go back to Login screen
-                Intent intent = new Intent(LoginActivity.this, LoginActivity.class);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                startActivity(intent);
-                finish();
-            });
-        } else {
-            showLoading(false);
-
-            // If Google not used
-            Intent intent = new Intent(LoginActivity.this, LoginActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        }
-    }
-
     private void firebaseAuthWithGoogle(String idToken) {
         showLoading(true);
         AuthCredential credential = GoogleAuthProvider.getCredential(idToken, null);
@@ -355,10 +392,8 @@ public class LoginActivity extends AppCompatActivity {
                         Log.d(TAG, "signInWithCredential:success");
                         FirebaseUser user = mAuth.getCurrentUser();
                         if (user != null) {
-                            Toast.makeText(LoginActivity.this,
-                                    "Welcome, " + user.getDisplayName(),
-                                    Toast.LENGTH_SHORT).show();
-                            goToDashboard();
+                            // Check if user exists in Firestore
+                            checkUserExistsInFirestore(user);
                         }
                     } else {
                         Log.w(TAG, "signInWithCredential:failure", task.getException());
@@ -369,17 +404,99 @@ public class LoginActivity extends AppCompatActivity {
                 });
     }
 
-    private void showLoading(boolean show) {
-        if (loadingOverlay != null) {
-            loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+    private void checkUserExistsInFirestore(FirebaseUser user) {
+        String userId = user.getUid();
+
+        db.collection("users").document(userId).get()
+                .addOnSuccessListener(documentSnapshot -> {
+                    if (documentSnapshot.exists()) {
+                        // User exists, check role and navigate
+                        String userRole = documentSnapshot.getString("role");
+                        if (userRole != null) {
+                            navigateBasedOnRole(userRole);
+                        } else {
+                            // No role assigned, go to registration to select role
+                            goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                        }
+                    } else {
+                        // New user, go to registration
+                        goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error checking user existence", e);
+                    Toast.makeText(this, "Error checking user data", Toast.LENGTH_SHORT).show();
+                    goToDashboard(); // Fallback to dashboard
+                });
+    }
+
+    private void goToRegistrationWithEmail(String email, String name) {
+        Intent intent = new Intent(LoginActivity.this, RegisterActivity.class);
+        if (email != null) intent.putExtra("email", email);
+        if (name != null) intent.putExtra("name", name);
+        startActivity(intent);
+        finish();
+    }
+
+    private void checkUserRoleAndNavigate(String userId) {
+        showLoading(true);
+
+        db.collection("users").document(userId).get()
+                .addOnSuccessListener(documentSnapshot -> {
+                    showLoading(false);
+                    if (documentSnapshot.exists()) {
+                        String userRole = documentSnapshot.getString("role");
+
+                        // Validate selected role matches actual user role
+                        if (userRole != null && userRole.equals(selectedRole)) {
+                            // Role matches, navigate to appropriate activity
+                            navigateBasedOnRole(userRole);
+                        } else {
+                            // Role mismatch
+                            Toast.makeText(LoginActivity.this,
+                                    "You selected " + selectedRole + " but your account is registered as " + userRole,
+                                    Toast.LENGTH_LONG).show();
+
+                            // Auto-correct the role selection
+                            if ("owner".equals(userRole)) {
+                                chipOwnerLogin.setChecked(true);
+                            } else if ("tenant".equals(userRole)) {
+                                chipTenantLogin.setChecked(true);
+                            }
+                        }
+                    } else {
+                        // User document not found
+                        Toast.makeText(LoginActivity.this,
+                                "User data not found. Please contact support.",
+                                Toast.LENGTH_LONG).show();
+                        mAuth.signOut();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    showLoading(false);
+                    Log.e(TAG, "Error checking user role", e);
+                    Toast.makeText(LoginActivity.this,
+                            "Error checking user role: " + e.getMessage(),
+                            Toast.LENGTH_SHORT).show();
+                });
+    }
+
+    private void navigateBasedOnRole(String role) {
+        Intent intent;
+
+        if ("owner".equals(role)) {
+            // Owner dashboard
+            intent = new Intent(LoginActivity.this, ProfileActivity.class);
+        } else {
+            // Tenant/User dashboard
+            intent = new Intent(LoginActivity.this, MainActivity.class);
         }
 
-        // Enable/disable buttons
-        signInButton.setEnabled(!show);
-        guestButton.setEnabled(!show);
-        signUpButton.setEnabled(!show);
-        googleButton.setEnabled(!show);
-
+        intent.putExtra("role", role);
+        intent.putExtra("userId", mAuth.getCurrentUser().getUid());
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 
     private void goToDashboard() {
@@ -390,16 +507,27 @@ public class LoginActivity extends AppCompatActivity {
         finish();
     }
 
+    private void showLoading(boolean show) {
+        if (loadingOverlay != null) {
+            loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+
+        // Enable/disable buttons
+        btnSignIn.setEnabled(!show);
+        guestButton.setEnabled(!show);
+        signUpButton.setEnabled(!show);
+        googleButton.setEnabled(!show);
+        chipTenantLogin.setEnabled(!show);
+        chipOwnerLogin.setEnabled(!show);
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
-        // Check if user is already signed in
+        // Check if user is already signed in (anonymous users)
         FirebaseUser currentUser = mAuth.getCurrentUser();
         if (currentUser != null && currentUser.isAnonymous()) {
             goToDashboard();
         }
     }
-
-
 }
-
