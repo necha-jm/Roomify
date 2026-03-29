@@ -511,10 +511,10 @@ public class LoginActivity extends AppCompatActivity {
 
         if ("owner".equals(role)) {
             // Owner dashboard
-            intent = new Intent(LoginActivity.this, ProfileActivity.class);
+            intent = new Intent(LoginActivity.this, OwnerDashboard.class);
         } else {
             // Tenant/User dashboard
-            intent = new Intent(LoginActivity.this, MainActivity.class);
+            intent = new Intent(LoginActivity.this, DashboardActivity.class);
         }
 
         intent.putExtra("role", role);

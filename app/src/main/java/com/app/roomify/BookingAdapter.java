@@ -59,6 +59,8 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
         configureButtons(holder, request, status);
     }
 
+
+
     private void configureButtons(ViewHolder holder, BookingRequest request, String status) {
         // Reset all buttons visibility first
         holder.btnAccept.setVisibility(View.GONE);
