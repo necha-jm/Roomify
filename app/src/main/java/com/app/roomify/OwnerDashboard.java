@@ -217,6 +217,15 @@ public class OwnerDashboard extends AppCompatActivity {
                 .addOnSuccessListener(rooms -> {
                     List<BookingRequest> pendingRequests = new ArrayList<>();
 
+                    if (rooms.isEmpty()) {
+                        pendingRequestAdapter.setRequests(pendingRequests);
+                        showLoading(false);
+                        return;
+                    }
+
+                    final int totalRooms = rooms.size();
+                    final int[] processedRooms = {0};
+
                     for (QueryDocumentSnapshot room : rooms) {
                         String roomId = room.getId();
                         String roomTitle = room.getString("title");
@@ -235,13 +244,20 @@ public class OwnerDashboard extends AppCompatActivity {
                                         pendingRequests.add(request);
                                     }
 
-                                    pendingRequestAdapter.setRequests(pendingRequests);
-                                    showLoading(false);
+                                    processedRooms[0]++;
+                                    if (processedRooms[0] == totalRooms) {
+                                        // Only update adapter once all rooms are processed
+                                        pendingRequestAdapter.setRequests(pendingRequests);
+                                        showLoading(false);
+                                    }
+                                })
+                                .addOnFailureListener(e -> {
+                                    processedRooms[0]++;
+                                    if (processedRooms[0] == totalRooms) {
+                                        pendingRequestAdapter.setRequests(pendingRequests);
+                                        showLoading(false);
+                                    }
                                 });
-                    }
-
-                    if (rooms.isEmpty()) {
-                        showLoading(false);
                     }
                 })
                 .addOnFailureListener(e -> {
@@ -251,6 +267,8 @@ public class OwnerDashboard extends AppCompatActivity {
     }
 
     private void loadProperties() {
+
+
         if (currentUserId == null) return;
 
         db.collection("rooms")

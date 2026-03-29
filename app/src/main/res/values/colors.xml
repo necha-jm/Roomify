@@ -38,6 +38,10 @@
     <color name="error_red">#F44336</color>
     <color name="owner_card_add">#4CAF50</color>
 
+
+    <color name="owner_card_bookings">#FF9800</color>
+    <color name="owner_card_analytics">#673AB7</color>
+
     <color name="surface">#F5F5F5</color>
     <color name="secondary">#625B71</color>
     <color name="tertiary">#7D5260</color>
@@ -109,5 +113,8 @@
     <color name="chip_confirmed_bg">#E8F5E9</color>
     <color name="chip_confirmed_text">#4CAF50</color>
     <color name="bottom_nav_color">#666666</color>
+    <color name="owner_bottom_nav_color">#4A90E2</color>
+
+    <color name="owner_background_start">#4A90E2</color>
 
 </resources>

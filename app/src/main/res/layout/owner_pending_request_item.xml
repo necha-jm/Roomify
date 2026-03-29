@@ -68,9 +68,7 @@
                 android:layout_height="wrap_content"
                 android:text="Pending"
                 android:textSize="12sp"
-                app:chipBackgroundColor="@color/chip_pending_bg"
-                app:chipTextColor="@color/chip_pending_text" />
-
+                app:chipBackgroundColor="@color/chip_pending_bg"/>
         </LinearLayout>
 
         <!-- Details -->

@@ -87,7 +87,6 @@
             android:id="@+id/ivMenu"
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:src="@drawable/ic_more_vert"
             android:padding="8dp"
             android:background="?attr/selectableItemBackground"
             app:tint="@color/text_secondary" />

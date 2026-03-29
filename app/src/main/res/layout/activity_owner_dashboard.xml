@@ -5,7 +5,6 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/owner_background_start"
     tools:context=".OwnerDashboard">
 
     <!-- App Bar with Gradient -->
@@ -396,7 +395,7 @@
                             android:layout_width="48dp"
                             android:layout_height="48dp"
                             android:src="@drawable/ic_analytics"
-                            android:tint="@android:color/white" />
+                            app:tint="@android:color/white" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -529,7 +528,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        app:menu="@menu/owner_bottom_nav_menu"
+        app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@color/owner_bottom_nav_color"
         app:itemTextColor="@color/owner_bottom_nav_color"
         app:backgroundColor="@android:color/white"
