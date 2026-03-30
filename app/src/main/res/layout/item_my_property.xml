@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="2dp"
+    android:foreground="?attr/selectableItemBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Image Section -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="160dp">
+
+            <ImageView
+                android:id="@+id/ivPropertyImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_room_placeholder" />
+
+            <!-- Availability Badge -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="12dp"
+                android:orientation="horizontal"
+                android:background="@drawable/availability_badge_bg"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:gravity="center">
+
+                <ImageView
+                    android:id="@+id/ivAvailability"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_check_circle"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:id="@+id/tvAvailability"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Available"
+                    android:textSize="11sp"
+                    android:textColor="@color/green_success"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+        </RelativeLayout>
+
+        <!-- Content Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Title and Price Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Modern Studio Apartment"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_dark"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tvPrice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TZS 450,000"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary" />
+
+            </LinearLayout>
+
+            <!-- Location -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_location"
+                    app:tint="@color/text_secondary"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:id="@+id/tvLocation"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Dar es Salaam, Tanzania"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+            </LinearLayout>
+
+            <!-- Bookings Count -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_bookings"
+                    app:tint="@color/text_secondary"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:id="@+id/tvBookingsCount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="3 bookings"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary" />
+
+            </LinearLayout>
+
+            <!-- Action Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:gravity="end">
+
+                <ImageView
+                    android:id="@+id/btnEdit"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/edit"
+                    android:padding="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="@color/text_secondary"
+                    android:contentDescription="Edit" />
+
+                <ImageView
+                    android:id="@+id/btnDelete"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/delete"
+                    android:padding="8dp"
+                    android:layout_marginStart="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="@color/red_error"
+                    android:contentDescription="Delete" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

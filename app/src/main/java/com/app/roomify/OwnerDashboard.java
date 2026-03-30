@@ -2,6 +2,7 @@ package com.app.roomify;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
@@ -25,7 +26,7 @@ public class OwnerDashboard extends AppCompatActivity {
 
     // Views
     private TextView tvOwnerName, tvTotalProperties, tvTotalBookings, tvTotalEarnings;
-    private TextView tvThisMonthEarnings, tvLastMonthEarnings;
+    private TextView tvThisMonthEarnings, tvLastMonthEarnings, tvViewAllRequests;
     private MaterialCardView cardAddProperty, cardMyProperties, cardBookings, cardAnalytics;
     private RecyclerView rvPendingRequests, rvProperties;
     private BottomNavigationView bottomNavigation;
@@ -64,6 +65,7 @@ public class OwnerDashboard extends AppCompatActivity {
         tvTotalEarnings = findViewById(R.id.tvTotalEarnings);
         tvThisMonthEarnings = findViewById(R.id.tvThisMonthEarnings);
         tvLastMonthEarnings = findViewById(R.id.tvLastMonthEarnings);
+        tvViewAllRequests = findViewById(R.id.tvViewAllRequests);
 
         cardAddProperty = findViewById(R.id.cardAddProperty);
         cardMyProperties = findViewById(R.id.cardMyProperties);
@@ -84,8 +86,10 @@ public class OwnerDashboard extends AppCompatActivity {
         rvPendingRequests.setLayoutManager(new LinearLayoutManager(this));
         rvProperties.setLayoutManager(new LinearLayoutManager(this));
 
-        pendingRequestAdapter = new PendingRequestAdapter(new ArrayList<>());
-        propertyAdapter = new PropertyAdapter(new ArrayList<>());
+        // Initialize adapters with empty lists
+        pendingRequestAdapter = new PendingRequestAdapter(new ArrayList<>(), this::onRequestAction);
+        propertyAdapter = new PropertyAdapter(new ArrayList<>(), this::onPropertyClick);
+
         rvPendingRequests.setAdapter(pendingRequestAdapter);
         rvProperties.setAdapter(propertyAdapter);
     }
@@ -94,6 +98,11 @@ public class OwnerDashboard extends AppCompatActivity {
         mAuth = FirebaseAuth.getInstance();
         db = FirebaseFirestore.getInstance();
         currentUserId = mAuth.getCurrentUser() != null ? mAuth.getCurrentUser().getUid() : null;
+
+        if (currentUserId == null) {
+            Toast.makeText(this, "Please login again", Toast.LENGTH_SHORT).show();
+            finish();
+        }
     }
 
     private void loadOwnerData() {
@@ -103,11 +112,13 @@ public class OwnerDashboard extends AppCompatActivity {
                 .addOnSuccessListener(documentSnapshot -> {
                     if (documentSnapshot.exists()) {
                         String name = documentSnapshot.getString("name");
-                        tvOwnerName.setText(name != null ? name : "Property Owner");
+                        tvOwnerName.setText(name != null ? "Welcome, " + name.split(" ")[0] : "Property Owner");
                     }
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(this, "Error loading user data", Toast.LENGTH_SHORT).show();
                 });
 
-        // Load statistics
         loadStatistics();
     }
 
@@ -131,10 +142,8 @@ public class OwnerDashboard extends AppCompatActivity {
                     int totalBookings = 0;
                     double totalEarnings = 0;
 
-                    for (QueryDocumentSnapshot room : rooms) {
-                        String roomId = room.getId();
-                        // This would need aggregation - simplified for demo
-                    }
+                    // You need to iterate through each room and count its bookings
+                    // This is simplified - you'll need to implement actual counting
 
                     tvTotalBookings.setText(String.valueOf(totalBookings));
                     tvTotalEarnings.setText("$" + totalEarnings);
@@ -149,8 +158,10 @@ public class OwnerDashboard extends AppCompatActivity {
             startActivity(intent);
         });
 
+
+        //modificatio required here
         cardMyProperties.setOnClickListener(v -> {
-            Intent intent = new Intent(OwnerDashboard.this, RoomDetailsActivity.class);
+            Intent intent = new Intent(OwnerDashboard.this, MyPropertiesActivity.class);
             startActivity(intent);
         });
 
@@ -164,22 +175,19 @@ public class OwnerDashboard extends AppCompatActivity {
             Toast.makeText(this, "Analytics feature coming soon", Toast.LENGTH_SHORT).show();
         });
 
-        /* ivNotifications.setOnClickListener(v -> {
-            Intent intent = new Intent(OwnerDashboard.this, NotificationsActivity.class);
-            startActivity(intent);
-        });**/
-
-        /*ivSettings.setOnClickListener(v -> {
-            Intent intent = new Intent(OwnerDashboard.this, SettingsActivity.class);
-            startActivity(intent);
+        ivNotifications.setOnClickListener(v -> {
+            Toast.makeText(this, "Notifications coming soon", Toast.LENGTH_SHORT).show();
         });
 
-        TextView tvViewAllRequests = findViewById(R.id.tvViewAllRequests);
+        ivSettings.setOnClickListener(v -> {
+            Toast.makeText(this, "Settings coming soon", Toast.LENGTH_SHORT).show();
+        });
+
         tvViewAllRequests.setOnClickListener(v -> {
             Intent intent = new Intent(OwnerDashboard.this, BookingRequestsActivity.class);
             intent.putExtra("role", "owner");
             startActivity(intent);
-        });*/
+        });
     }
 
     private void setupBottomNavigation() {
@@ -202,34 +210,34 @@ public class OwnerDashboard extends AppCompatActivity {
         });
     }
 
-    private void showLoading(boolean show) {
-        loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
-        progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
-    }
     private void loadPendingRequests() {
         if (currentUserId == null) return;
 
         showLoading(true);
 
+        // Create a temporary list to collect all requests
+        List<BookingRequest> allPendingRequests = new ArrayList<>();
+
         db.collection("rooms")
                 .whereEqualTo("postedBy", currentUserId)
                 .get()
                 .addOnSuccessListener(rooms -> {
-                    List<BookingRequest> pendingRequests = new ArrayList<>();
-
                     if (rooms.isEmpty()) {
-                        pendingRequestAdapter.setRequests(pendingRequests);
                         showLoading(false);
+                        pendingRequestAdapter.setRequests(allPendingRequests);
                         return;
                     }
 
-                    final int totalRooms = rooms.size();
+                    // Track how many rooms have been processed
                     final int[] processedRooms = {0};
+                    final int totalRooms = rooms.size();
 
                     for (QueryDocumentSnapshot room : rooms) {
                         String roomId = room.getId();
                         String roomTitle = room.getString("title");
+                        if (roomTitle == null) roomTitle = "Unknown Room";
 
+                        String finalRoomTitle = roomTitle;
                         db.collection("rooms")
                                 .document(roomId)
                                 .collection("bookings")
@@ -238,23 +246,31 @@ public class OwnerDashboard extends AppCompatActivity {
                                 .addOnSuccessListener(bookings -> {
                                     for (QueryDocumentSnapshot booking : bookings) {
                                         BookingRequest request = booking.toObject(BookingRequest.class);
-                                        request.setId(booking.getId());
-                                        request.setRoomId(roomId);
-                                        request.setRoomTitle(roomTitle);
-                                        pendingRequests.add(request);
+                                        if (request != null) {
+                                            request.setId(booking.getId());
+                                            request.setRoomId(roomId);
+                                            request.setRoomTitle(finalRoomTitle);
+                                            allPendingRequests.add(request);
+                                        }
                                     }
 
                                     processedRooms[0]++;
+
+                                    // Update adapter after processing all rooms
                                     if (processedRooms[0] == totalRooms) {
-                                        // Only update adapter once all rooms are processed
-                                        pendingRequestAdapter.setRequests(pendingRequests);
+                                        pendingRequestAdapter.setRequests(allPendingRequests);
                                         showLoading(false);
+
+                                        // Show empty state if no requests
+                                        if (allPendingRequests.isEmpty()) {
+                                            Toast.makeText(this, "No pending requests", Toast.LENGTH_SHORT).show();
+                                        }
                                     }
                                 })
                                 .addOnFailureListener(e -> {
                                     processedRooms[0]++;
                                     if (processedRooms[0] == totalRooms) {
-                                        pendingRequestAdapter.setRequests(pendingRequests);
+                                        pendingRequestAdapter.setRequests(allPendingRequests);
                                         showLoading(false);
                                     }
                                 });
@@ -267,9 +283,9 @@ public class OwnerDashboard extends AppCompatActivity {
     }
 
     private void loadProperties() {
-
-
         if (currentUserId == null) return;
+
+        showLoading(true);
 
         db.collection("rooms")
                 .whereEqualTo("postedBy", currentUserId)
@@ -279,13 +295,21 @@ public class OwnerDashboard extends AppCompatActivity {
 
                     for (QueryDocumentSnapshot document : rooms) {
                         Room room = document.toObject(Room.class);
-                        room.setId(document.getId());
-                        propertyList.add(room);
+                        if (room != null) {
+                            room.setId(document.getId());
+                            propertyList.add(room);
+                        }
                     }
 
                     propertyAdapter.setRooms(propertyList);
+                    showLoading(false);
+
+                    if (propertyList.isEmpty()) {
+                        Toast.makeText(this, "No properties found. Add your first property!", Toast.LENGTH_LONG).show();
+                    }
                 })
                 .addOnFailureListener(e -> {
+                    showLoading(false);
                     Toast.makeText(this, "Error loading properties: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
@@ -298,19 +322,24 @@ public class OwnerDashboard extends AppCompatActivity {
         }
     }
 
+    // When a booking is approved or created
     private void updateBookingStatus(BookingRequest request, String status) {
         showLoading(true);
 
+        // Update booking status
         db.collection("rooms")
                 .document(request.getRoomId())
                 .collection("bookings")
                 .document(request.getId())
                 .update("status", status)
                 .addOnSuccessListener(aVoid -> {
+                    // Also update the room's bookings count
+                    updateRoomBookingsCount(request.getRoomId());
+
                     showLoading(false);
-                    Toast.makeText(this, "Booking " + status, Toast.LENGTH_SHORT).show();
-                    loadPendingRequests(); // Refresh
-                    loadStatistics(); // Refresh stats
+                    Toast.makeText(this, "Booking " + status + "d", Toast.LENGTH_SHORT).show();
+                    loadPendingRequests();
+                    loadStatistics();
                 })
                 .addOnFailureListener(e -> {
                     showLoading(false);
@@ -318,10 +347,39 @@ public class OwnerDashboard extends AppCompatActivity {
                 });
     }
 
+    // Helper method to update room's bookings count
+    private void updateRoomBookingsCount(String roomId) {
+        // Count all approved bookings for this room
+        db.collection("rooms")
+                .document(roomId)
+                .collection("bookings")
+                .whereEqualTo("status", "approved")
+                .get()
+                .addOnSuccessListener(bookings -> {
+                    int count = bookings.size();
+
+                    // Update the room document with the count
+                    db.collection("rooms")
+                            .document(roomId)
+                            .update("bookingsCount", count)
+                            .addOnSuccessListener(aVoid -> {
+                                Log.d("OwnerDashboard", "Updated bookings count for room: " + roomId + " to " + count);
+                            });
+                });
+    }
+
     private void onPropertyClick(Room room) {
         Intent intent = new Intent(OwnerDashboard.this, RoomDetailsActivity.class);
         intent.putExtra("room_id", room.getId());
         startActivity(intent);
+    }
 
+    private void showLoading(boolean show) {
+        if (loadingOverlay != null) {
+            loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+        if (progressBar != null) {
+            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
     }
 }

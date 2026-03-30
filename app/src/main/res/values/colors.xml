@@ -14,6 +14,9 @@
 
     <!-- Accent Colors -->
     <color name="accent_dark">#F50057</color>
+    <color name="red_error">#E74C3C</color>
+
+
 
     <!-- Background Colors -->
     <color name="background_grey">#F5F5F5</color>

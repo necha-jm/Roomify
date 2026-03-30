@@ -28,6 +28,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Roomify">
         <activity
+            android:name=".MyPropertiesActivity"
+            android:exported="false" />
+        <activity
             android:name=".OwnerDashboard"
             android:exported="false" />
         <activity
