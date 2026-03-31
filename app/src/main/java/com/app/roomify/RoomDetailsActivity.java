@@ -11,7 +11,6 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -26,9 +25,9 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
 import java.util.Map;
 
 public class RoomDetailsActivity extends AppCompatActivity {
@@ -36,28 +35,23 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private static final String TAG = "RoomDetailsActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 200;
 
-    private TextView tvTitle, tvPrice, tvAddress, tvDescription,tvBedrooms,tvPostedDate;
+    private TextView tvTitle, tvPrice, tvAddress, tvDescription, tvBedrooms, tvPostedDate;
     private MaterialButton btnGetDirections, btnContactOwner;
-
-    private double roomLat = 0, roomLng = 0;
-    private String roomId, ownerId, ownerPhone, ownerEmail, roomAddress;
-
-    private FusedLocationProviderClient fusedLocationClient;
-
     private Button btnBookNow;
 
+    private double roomLat = 0, roomLng = 0;
+    private String roomId;
+    private Room currentRoom;
     private boolean alreadyRequested = false;
-
-    private RecyclerView Amenities;
-
-
+    private boolean isRoomLoaded = false;  // ✅ ADD THIS LINE
+    private FusedLocationProviderClient fusedLocationClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_room_details);
 
-        // Get roomId safely
+        // Get roomId
         roomId = getIntent().getStringExtra("room_id");
         if (roomId == null || roomId.isEmpty()) {
             Toast.makeText(this, "Room ID missing!", Toast.LENGTH_SHORT).show();
@@ -70,15 +64,17 @@ public class RoomDetailsActivity extends AppCompatActivity {
         tvPrice = findViewById(R.id.tvRoomPrice);
         tvAddress = findViewById(R.id.tvRoomAddress);
         tvDescription = findViewById(R.id.tvRoomDescription);
-        btnGetDirections = findViewById(R.id.btnGetDirections);
-        btnContactOwner = findViewById(R.id.btnCallOwner);
         tvBedrooms = findViewById(R.id.tvBedrooms);
         tvPostedDate = findViewById(R.id.tvPostedDate);
+        btnGetDirections = findViewById(R.id.btnGetDirections);
+        btnContactOwner = findViewById(R.id.btnCallOwner);
         btnBookNow = findViewById(R.id.btnBookNow);
 
-
-        // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        // Disable book button while loading
+        btnBookNow.setEnabled(false);
+        btnBookNow.setText("Loading...");
 
         // Load room details
         loadRoomDetails();
@@ -94,12 +90,84 @@ public class RoomDetailsActivity extends AppCompatActivity {
             }
         });
 
-
-        //  CHECK IF USER ALREADY REQUESTED
         checkIfAlreadyRequested();
     }
 
-    // CHECK EXISTING BOOKING
+    private void loadRoomDetails() {
+        FirebaseUtils.getRoom(roomId, task -> {
+            if (!task.isSuccessful() || task.getResult() == null) {
+                Toast.makeText(this, "Failed to load room", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Firestore room load failed", task.getException());
+                btnBookNow.setEnabled(false);
+                btnBookNow.setText("Error Loading");
+                return;
+            }
+
+            DocumentSnapshot doc = task.getResult();
+            Log.d(TAG, "Room document data: " + doc.getData());
+
+            // Log all fields for debugging
+            Log.d(TAG, "All document fields: " + doc.getData().keySet());
+
+            // Check specifically for postedBy field
+            if (doc.contains("postedBy")) {
+                Log.d(TAG, "postedBy field exists with value: " + doc.getString("postedBy"));
+            } else {
+                Log.e(TAG, "postedBy field MISSING from Firestore document!");
+            }
+
+            Room room = doc.toObject(Room.class);
+            if (room == null) {
+                Toast.makeText(this, "Room data not found", Toast.LENGTH_SHORT).show();
+                btnBookNow.setEnabled(false);
+                btnBookNow.setText("Data Error");
+                return;
+            }
+
+            currentRoom = room;
+            isRoomLoaded = true;  // ✅ SET LOADED FLAG
+            roomLat = room.getLatitude();
+            roomLng = room.getLongitude();
+
+            tvTitle.setText(room.getTitle());
+            tvPrice.setText("$" + room.getPrice() + "/month");
+            tvAddress.setText(room.getAddress());
+            tvDescription.setText(room.getDescription());
+            tvBedrooms.setText(String.valueOf(room.getRoomsCount()));
+
+            long timestamp = room.getCreatedAt();
+            String formattedDate = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    .format(new Date(timestamp));
+            tvPostedDate.setText(formattedDate);
+
+            // Geocode if coordinates missing
+            if ((roomLat == 0 || roomLng == 0) && !room.getAddress().isEmpty()) {
+                geocodeAddress(room.getAddress());
+            }
+
+            // Log room details for debugging
+            Log.d(TAG, "Room ownerId=" + room.getPostedBy() +
+                    ", phone=" + room.getContactPhone() +
+                    ", email=" + room.getContactEmail());
+
+            // Enable book button only if owner info exists and not already requested
+            String ownerId = room.getPostedBy();
+            if (ownerId != null && !ownerId.isEmpty()) {
+                if (!alreadyRequested) {
+                    btnBookNow.setEnabled(true);
+                    btnBookNow.setText("Book Now");
+                } else {
+                    btnBookNow.setEnabled(false);
+                    btnBookNow.setText("Already Requested");
+                }
+            } else {
+                btnBookNow.setEnabled(false);
+                btnBookNow.setText("Owner Info Missing");
+                Log.e(TAG, "Room owner info is missing or empty for roomId: " + roomId);
+            }
+        });
+    }
+
     private void checkIfAlreadyRequested() {
         String userId = FirebaseUtils.getCurrentUserId();
         if (userId == null) return;
@@ -115,50 +183,20 @@ public class RoomDetailsActivity extends AppCompatActivity {
                         alreadyRequested = true;
                         btnBookNow.setEnabled(false);
                         btnBookNow.setText("Already Requested");
+                    } else {
+                        // If room is loaded and not requested, enable button
+                        if (isRoomLoaded && currentRoom != null) {
+                            String ownerId = currentRoom.getPostedBy();
+                            if (ownerId != null && !ownerId.isEmpty()) {
+                                btnBookNow.setEnabled(true);
+                                btnBookNow.setText("Book Now");
+                            }
+                        }
                     }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to check existing bookings", e);
                 });
-    }
-
-    private void loadRoomDetails() {
-        FirebaseUtils.getRoom(roomId, task -> {
-            if (!task.isSuccessful() || task.getResult() == null) {
-                Toast.makeText(this, "Failed to load room", Toast.LENGTH_SHORT).show();
-                Log.e(TAG, "Firestore room load failed", task.getException());
-                return;
-            }
-
-            DocumentSnapshot doc = task.getResult();
-            Room room = doc.toObject(Room.class);
-            if (room == null) {
-                Toast.makeText(this, "Room data not found", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            // Set UI
-            tvTitle.setText(room.getTitle() != null ? room.getTitle() : "No title");
-            tvPrice.setText("$" + room.getPrice() + "/month");
-            roomAddress = room.getAddress();
-            tvAddress.setText(roomAddress != null ? roomAddress : "Address not available");
-            tvDescription.setText(room.getDescription() != null ? room.getDescription() : "");
-            tvBedrooms.setText(String.valueOf(room.getRoomsCount()));
-
-            long timestamp = room.getCreatedAt();
-            String formattedDate = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-                    .format(new Date(timestamp));
-            tvPostedDate.setText(formattedDate);
-
-            // Save location
-            roomLat = room.getLatitude();
-            roomLng = room.getLongitude();
-            ownerId = room.getPostedBy();
-            ownerPhone = room.getContactPhone();
-            ownerEmail = room.getContactEmail();
-
-            // If lat/lng missing, try geocoding
-            if ((roomLat == 0 || roomLng == 0) && roomAddress != null) {
-                geocodeAddress(roomAddress);
-            }
-        });
     }
 
     private void geocodeAddress(String address) {
@@ -170,8 +208,6 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 roomLat = location.getLatitude();
                 roomLng = location.getLongitude();
                 Log.d(TAG, "Geocoded address to: " + roomLat + ", " + roomLng);
-            } else {
-                Toast.makeText(this, "Could not find location for this address", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Geocoder error: " + e.getMessage());
@@ -179,120 +215,139 @@ public class RoomDetailsActivity extends AppCompatActivity {
     }
 
     private void requestRoomBooking() {
-        // Get current user ID
-        String userId = FirebaseUtils.getCurrentUserId();
-        if (userId == null) {
-            Toast.makeText(this, "Please login to request booking", Toast.LENGTH_SHORT).show();
+        // Check if room is loaded
+        if (!isRoomLoaded || currentRoom == null) {
+            Toast.makeText(this, "Loading room info, please wait...", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Room not loaded yet when trying to book");
             return;
         }
 
-        // Show loading indicator
-        Toast.makeText(this, "Sending booking request...", Toast.LENGTH_SHORT).show();
-        Log.d(TAG, "Starting booking request for room: " + roomId);
+        // Get owner ID with null safety
+        String ownerId = currentRoom.getPostedBy();
+        if (ownerId == null || ownerId.trim().isEmpty()) {
+            String errorMsg = "Cannot request booking: owner info missing";
+            Toast.makeText(this, errorMsg, Toast.LENGTH_SHORT).show();
+            Log.e(TAG, errorMsg + " - Room ID: " + currentRoom.getId() +
+                    ", PostedBy: '" + ownerId + "'");
 
-        // Get current user's name
-        FirebaseUtils.getCurrentUserName(userName -> {
-            if (userName == null) {
-                userName = "Unknown User";
-                Log.w(TAG, "User name not found, using default");
-            }
+            // Log full room details for debugging
+            Log.e(TAG, "Full room data: " +
+                    "Title=" + currentRoom.getTitle() +
+                    ", Address=" + currentRoom.getAddress() +
+                    ", Owner=" + ownerId +
+                    ", Phone=" + currentRoom.getContactPhone() +
+                    ", Email=" + currentRoom.getContactEmail());
 
-            // Get current user's phone
-            String finalUserName = userName;
-            FirebaseUtils.getCurrentUserPhone(userPhone -> {
-                if (userPhone == null) {
-                    userPhone = "Not provided";
-                    Log.w(TAG, "User phone not found, using default");
-                }
+            // Disable book button since owner info is missing
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Owner Info Missing");
+            return;
+        }
 
-                String finalUserPhone = userPhone;
+        String currentUserId = FirebaseUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            Toast.makeText(this, "You must be logged in to request a room", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-                // Get room title first (important for display)
-                FirebaseUtils.getRoom(roomId, roomTask -> {
-                    if (!roomTask.isSuccessful() || roomTask.getResult() == null) {
-                        Log.e(TAG, "Failed to get room title");
-                        Toast.makeText(this, "Error getting room details", Toast.LENGTH_SHORT).show();
-                        return;
+        // Check if user is trying to book their own room
+        if (ownerId.equals(currentUserId)) {
+            Toast.makeText(this, "You cannot request your own room", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Disable button during booking process
+        btnBookNow.setEnabled(false);
+        btnBookNow.setText("Sending Request...");
+
+        // First, fetch current user details
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(currentUserId)
+                .get()
+                .addOnSuccessListener(userDoc -> {
+                    String userName = userDoc.getString("name");
+                    if (userName == null || userName.isEmpty()) {
+                        userName = userDoc.getString("fullName");
+                    }
+                    if (userName == null || userName.isEmpty()) {
+                        userName = "User";
                     }
 
-                    Room room = roomTask.getResult().toObject(Room.class);
-                    String roomTitle = room != null && room.getTitle() != null ? room.getTitle() : "Unknown Room";
+                    String userPhone = userDoc.getString("phone");
+                    if (userPhone == null || userPhone.isEmpty()) {
+                        userPhone = userDoc.getString("contactPhone");
+                    }
+                    if (userPhone == null) {
+                        userPhone = "";
+                    }
 
-                    // Create formatted date
-                    String formattedDate = new SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault())
-                            .format(new Date());
-
-                    // Generate a unique booking ID (using timestamp + userId + roomId)
-                    final String bookingId = System.currentTimeMillis() + "_" + userId + "_" + roomId;
-
-                    // Prepare complete booking data
+                    // Create booking data with all required fields
                     Map<String, Object> bookingData = new HashMap<>();
-                    bookingData.put("id", bookingId);
-                    bookingData.put("userId", userId);
-                    bookingData.put("userName", finalUserName);
-                    bookingData.put("userPhone", finalUserPhone);
-                    bookingData.put("roomId", roomId);
-                    bookingData.put("roomTitle", roomTitle);
-                    bookingData.put("status", "pending");
+                    bookingData.put("userId", currentUserId);
+                    bookingData.put("userName", userName);
+                    bookingData.put("userPhone", userPhone);
+                    bookingData.put("roomId", currentRoom.getId());
+                    bookingData.put("roomTitle", currentRoom.getTitle());
+                    bookingData.put("ownerId", ownerId);
                     bookingData.put("timestamp", System.currentTimeMillis());
-                    bookingData.put("bookingDate", formattedDate);
+                    bookingData.put("status", "pending");
+                    bookingData.put("bookingDate", new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                            .format(new Date()));
 
-                    Log.d(TAG, "Saving booking data with ID: " + bookingId);
-                    Log.d(TAG, "Booking data: " + bookingData.toString());
+                    Log.d(TAG, "Creating booking with data: " + bookingData);
 
-                    // Save booking to BOTH locations
+                    // Save to ROOM's bookings subcollection first
+                    String finalUserName = userName;
+                    FirebaseUtils.getRoomBookingsCollection(currentRoom.getId())
+                            .add(bookingData)
+                            .addOnSuccessListener(docRef -> {
+                                String bookingId = docRef.getId();
+                                Log.d(TAG, "Booking saved to room with ID: " + bookingId);
 
-                    // 1. Save to ROOM's bookings subcollection
-                    FirebaseUtils.getRoomBookingsCollection(roomId)
-                            .document(bookingId)
-                            .set(bookingData)
-                            .addOnSuccessListener(aVoid -> {
-                                Log.d(TAG, "✅ Booking saved to ROOM: rooms/" + roomId + "/bookings/" + bookingId);
+                                // Save to USER's bookings subcollection with same ID
+                                FirebaseFirestore.getInstance()
+                                        .collection("users")
+                                        .document(currentUserId)
+                                        .collection("bookings")
+                                        .document(bookingId)
+                                        .set(bookingData)
+                                        .addOnSuccessListener(aVoid -> {
+                                            Toast.makeText(this, "Booking request sent successfully", Toast.LENGTH_SHORT).show();
+                                            Log.d(TAG, "Booking saved to user with ID: " + bookingId);
+
+                                            // Send notification to owner
+                                            FirebaseUtils.sendNotificationToUser(
+                                                    ownerId,
+                                                    "New Booking Request",
+                                                    finalUserName + " wants to book " + currentRoom.getTitle(),
+                                                    bookingId
+                                            );
+
+                                            alreadyRequested = true;
+                                            btnBookNow.setEnabled(false);
+                                            btnBookNow.setText("Already Requested");
+                                        })
+                                        .addOnFailureListener(e -> {
+                                            Log.e(TAG, "Failed to save to user bookings", e);
+                                            Toast.makeText(this, "Failed to save booking", Toast.LENGTH_SHORT).show();
+                                            btnBookNow.setEnabled(true);
+                                            btnBookNow.setText("Book Now");
+                                        });
                             })
                             .addOnFailureListener(e -> {
-                                Log.e(TAG, "❌ Failed to save booking to ROOM", e);
+                                Toast.makeText(this, "Failed to send booking request", Toast.LENGTH_SHORT).show();
+                                Log.e(TAG, "Booking error", e);
+                                btnBookNow.setEnabled(true);
+                                btnBookNow.setText("Book Now");
                             });
-
-                    // 2. Save to USER's bookings subcollection
-                    FirebaseFirestore.getInstance()
-                            .collection("users")
-                            .document(userId)
-                            .collection("bookings")
-                            .document(bookingId)
-                            .set(bookingData)
-                            .addOnSuccessListener(aVoid -> {
-                                Log.d(TAG, "✅ Booking saved to USER: users/" + userId + "/bookings/" + bookingId);
-
-                                Toast.makeText(RoomDetailsActivity.this,
-                                        "Booking request sent successfully!",
-                                        Toast.LENGTH_LONG).show();
-
-                                // Notify room owner
-                                sendOwnerNotification(bookingId, finalUserName, roomTitle);
-
-                                // Optionally disable book button to prevent duplicate
-                                btnBookNow.setEnabled(false);
-                                btnBookNow.setText("Request Sent");
-                            })
-                            .addOnFailureListener(e -> {
-                                Log.e(TAG, "❌ Failed to save booking to USER", e);
-                                Log.e(TAG, "Error message: " + e.getMessage());
-                                Toast.makeText(RoomDetailsActivity.this,
-                                        "Failed to save booking: " + e.getMessage(),
-                                        Toast.LENGTH_SHORT).show();
-                            });
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to fetch user details", e);
+                    Toast.makeText(this, "Failed to get user details", Toast.LENGTH_SHORT).show();
+                    btnBookNow.setEnabled(true);
+                    btnBookNow.setText("Book Now");
                 });
-            });
-        });
-    }
-
-    // Updated sendOwnerNotification with room title
-    private void sendOwnerNotification(String bookingId, String userName, String roomTitle) {
-        String notificationTitle = "New Booking Request";
-        String notificationMessage = userName + " requested to book: " + roomTitle;
-
-        Log.d(TAG, "Sending notification to owner: " + ownerId);
-        FirebaseUtils.sendNotificationToUser(ownerId, notificationTitle, notificationMessage, bookingId);
     }
 
     private void openDirections() {
@@ -301,7 +356,6 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
-        // Check location permission
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
@@ -317,7 +371,6 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 originLng = location.getLongitude();
             }
 
-            // Construct Google Maps directions URI
             String uri = "https://www.google.com/maps/dir/?api=1" +
                     "&origin=" + originLat + "," + originLng +
                     "&destination=" + roomLat + "," + roomLng +
@@ -325,24 +378,38 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
             intent.setPackage("com.google.android.apps.maps");
-
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
-                // fallback to browser
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
             }
         });
     }
 
     private void contactRoomOwner() {
-        if (ownerPhone != null && !ownerPhone.isEmpty()) {
-            Intent intent = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + ownerPhone));
-            startActivity(intent);
-        } else if (ownerEmail != null && !ownerEmail.isEmpty()) {
-            Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + ownerEmail));
-            intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + tvTitle.getText());
-            startActivity(intent);
+        if (currentRoom == null) {
+            Toast.makeText(this, "Room info not available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String phone = currentRoom.getContactPhone();
+        String email = currentRoom.getContactEmail();
+
+        if (phone != null && !phone.isEmpty()) {
+            Intent intent = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + phone));
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "No calling app available", Toast.LENGTH_SHORT).show();
+            }
+        } else if (email != null && !email.isEmpty()) {
+            Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + email));
+            intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + currentRoom.getTitle());
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "No email app available", Toast.LENGTH_SHORT).show();
+            }
         } else {
             Toast.makeText(this, "Owner contact not available", Toast.LENGTH_SHORT).show();
         }

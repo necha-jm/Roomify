@@ -201,7 +201,7 @@ public class OwnerDashboard extends AppCompatActivity {
                 intent.putExtra("role", "owner");
                 startActivity(intent);
                 return true;
-            } else if (itemId == R.id.nav_profile) {
+            } else if (itemId == R.id.tab_profile) {
                 startActivity(new Intent(OwnerDashboard.this, ProfileActivity.class));
                 return true;
             }

@@ -31,6 +31,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.messaging.FirebaseMessaging;
 
@@ -80,7 +82,6 @@ public class PostRoomActivity extends AppCompatActivity {
     private Uri selectedContractUri;
     private String videoFileName = "";
     private String contractFileName = "";
-    private List<String> savedImagePaths = new ArrayList<>();
 
     // Property types
     private String[] propertyTypes = {"Apartment", "Single Room", "Studio", "House", "Shared Room", "Commercial"};
@@ -91,9 +92,13 @@ public class PostRoomActivity extends AppCompatActivity {
 
     // Firebase
     private FirebaseFirestore db;
-
-  private   String roomId;
+    private FirebaseAuth mAuth;
     private Marker locationMarker;
+    private String currentRoomId;
+
+    // ✅ Track if user is authenticated
+    private boolean isUserAuthenticated = false;
+    private String authenticatedUserId = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,12 +106,30 @@ public class PostRoomActivity extends AppCompatActivity {
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
+        // ✅ CRITICAL: Check if user is logged in before anything else
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) {
+            Toast.makeText(this, "Please login to post a room", Toast.LENGTH_LONG).show();
+            // Redirect to login
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        // ✅ Store authenticated user ID
+        authenticatedUserId = currentUser.getUid();
+        isUserAuthenticated = true;
+        Log.d(TAG, "User authenticated with ID: " + authenticatedUserId);
+
+        // Subscribe to notifications
         FirebaseMessaging.getInstance().subscribeToTopic("rooms")
                 .addOnCompleteListener(task -> {
                     if (task.isSuccessful()) {
                         Log.d("FCM", "Subscribed to rooms topic");
-                        Toast.makeText(this, "Subscribed to room notifications", Toast.LENGTH_SHORT).show();
                     } else {
                         Log.e("FCM", "Failed to subscribe to topic");
                     }
@@ -215,37 +238,6 @@ public class PostRoomActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error setting up map: " + e.getMessage());
         }
-    }
-
-    private void sendRoomNotification() {
-        new Thread(() -> {
-            try {
-                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-                org.json.JSONObject json = new org.json.JSONObject();
-                json.put("to", "/topics/rooms"); // send to all devices subscribed
-
-                org.json.JSONObject notification = new org.json.JSONObject();
-                notification.put("title", "New Room Available 🏠");
-                notification.put("body", "Check out the latest room posted!");
-
-                json.put("notification", notification);
-
-                okhttp3.RequestBody body = okhttp3.RequestBody.create(
-                        json.toString(),
-                        okhttp3.MediaType.parse("application/json")
-                );
-
-                okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url("https://fcm.googleapis.com/fcm/send")
-                        .post(body)
-                        .addHeader("Authorization", "key=YOUR_SERVER_KEY") // replace with your Firebase server key
-                        .build();
-
-                client.newCall(request).execute();
-            } catch (Exception e) {
-                Log.e("FCM", "Error sending notification: " + e.getMessage());
-            }
-        }).start();
     }
 
     private void selectLocation(GeoPoint point) {
@@ -373,44 +365,6 @@ public class PostRoomActivity extends AppCompatActivity {
         startActivityForResult(intent, CONTRACT_PICK_REQUEST_CODE);
     }
 
-
-    private void sendNewRoomNotification() {
-
-        String url = "https://fcm.googleapis.com/fcm/send";
-
-        new Thread(() -> {
-            try {
-                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-
-                org.json.JSONObject json = new org.json.JSONObject();
-
-                json.put("to", "/topics/rooms");
-
-                org.json.JSONObject notification = new org.json.JSONObject();
-                notification.put("title", "New Room Available 🏠");
-                notification.put("body", "Check out the latest room posted!");
-
-                json.put("notification", notification);
-
-                okhttp3.RequestBody body = okhttp3.RequestBody.create(
-                        json.toString(),
-                        okhttp3.MediaType.parse("application/json")
-                );
-
-                okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url(url)
-                        .post(body)
-                        .addHeader("Authorization", "key=YOUR_SERVER_KEY")
-                        .build();
-
-                client.newCall(request).execute();
-
-            } catch (Exception e) {
-                Log.e("FCM", "Error sending notification: " + e.getMessage());
-            }
-        }).start();
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -458,7 +412,6 @@ public class PostRoomActivity extends AppCompatActivity {
 
     private void handleImageSelection(Intent data) {
         selectedImageUris.clear();
-        savedImagePaths.clear();
 
         try {
             if (data.getClipData() != null) {
@@ -527,11 +480,28 @@ public class PostRoomActivity extends AppCompatActivity {
 
     private void validateAndSubmit() {
         try {
-            // Simple validation - only essential fields
+            // ✅ CRITICAL: Verify user is still authenticated
+            FirebaseUser currentUser = mAuth.getCurrentUser();
+            if (currentUser == null) {
+                Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(this, LoginActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(intent);
+                finish();
+                return;
+            }
+
+            // ✅ Update authenticated user ID in case it changed
+            authenticatedUserId = currentUser.getUid();
+            Log.d(TAG, "Posting room as user: " + authenticatedUserId);
+
+            // Validate required fields
             String title = etRoomTitle.getText().toString().trim();
             String description = etDescription.getText().toString().trim();
             String priceStr = etPrice.getText().toString().trim();
             String phone = etContactPhone.getText().toString().trim();
+            String roomsCountStr = etRoomsCount.getText().toString().trim();
+            String bathroomsCountStr = etBathroomsCount.getText().toString().trim();
 
             if (TextUtils.isEmpty(title)) {
                 etRoomTitle.setError("Title is required");
@@ -569,14 +539,28 @@ public class PostRoomActivity extends AppCompatActivity {
                 return;
             }
 
+            // Parse counts with defaults
+            int roomsCount = 1;
+            if (!TextUtils.isEmpty(roomsCountStr)) {
+                roomsCount = Integer.parseInt(roomsCountStr);
+            }
+
+            int bathroomsCount = 1;
+            if (!TextUtils.isEmpty(bathroomsCountStr)) {
+                bathroomsCount = Integer.parseInt(bathroomsCountStr);
+            }
+
             String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
             String email = etContactEmail.getText().toString().trim();
 
             showLoading(true);
+            saveRoomToFirestore(title, description, price, propertyType, phone, email,
+                    roomsCount, bathroomsCount);
 
-            // Save directly to Firestore without file uploads
-            saveRoomToFirestore(title, description, price, propertyType, phone, email);
-
+        } catch (NumberFormatException e) {
+            showError("Please enter valid numbers for price, rooms, and bathrooms");
+            Log.e(TAG, "Number format error: " + e.getMessage());
+            showLoading(false);
         } catch (Exception e) {
             Log.e(TAG, "Error in validateAndSubmit: " + e.getMessage(), e);
             showError("Error: " + e.getMessage());
@@ -585,19 +569,53 @@ public class PostRoomActivity extends AppCompatActivity {
     }
 
     private void saveRoomToFirestore(String title, String description, double price,
-                                     String propertyType, String phone, String email) {
+                                     String propertyType, String phone, String email,
+                                     int roomsCount, int bathroomsCount) {
 
-        // ADD THIS CHECK
+        // ✅ Double-check location
         if (selectedLocation == null) {
-            Toast.makeText(this, "Please select location on map", Toast.LENGTH_SHORT).show();
+            showError("Please select location on map");
+            showLoading(false);
             return;
         }
 
-        String roomId = db.collection("rooms").document().getId();
+        // ✅ Double-check user authentication
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) {
+            showError("You must be logged in to post a room");
+            showLoading(false);
+            return;
+        }
 
-        // Create a simple map with only essential data
+        // ✅ Get the REAL user ID - NEVER use "anonymous"
+        String currentUserId = currentUser.getUid();
+
+        // ✅ Validate user ID is not empty or anonymous
+        if (currentUserId == null || currentUserId.isEmpty()) {
+            showError("Authentication error. Please login again.");
+            showLoading(false);
+            return;
+        }
+
+        // ✅ CRITICAL: Ensure we never use "anonymous"
+        if ("anonymous".equals(currentUserId)) {
+            showError("Invalid user session. Please login with a valid account.");
+            showLoading(false);
+            return;
+        }
+
+        // Generate room ID
+        currentRoomId = db.collection("rooms").document().getId();
+
+        Log.d(TAG, "=== CREATING NEW ROOM ===");
+        Log.d(TAG, "Room ID: " + currentRoomId);
+        Log.d(TAG, "Posted by (Owner ID): " + currentUserId);
+        Log.d(TAG, "Title: " + title);
+        Log.d(TAG, "Price: $" + price);
+
+        // Create room data with ALL required fields
         Map<String, Object> room = new HashMap<>();
-        room.put("id", roomId);
+        room.put("id", currentRoomId);
         room.put("title", title);
         room.put("description", description);
         room.put("price", price);
@@ -608,56 +626,131 @@ public class PostRoomActivity extends AppCompatActivity {
         room.put("contactPhone", phone);
         room.put("contactEmail", email.isEmpty() ? "" : email);
         room.put("amenities", selectedAmenities);
-        room.put("imageCount", selectedImageUris.size()); // Store only count, not actual images
+        room.put("imageCount", selectedImageUris.size());
         room.put("hasVideo", selectedVideoUri != null);
         room.put("hasContract", selectedContractUri != null);
         room.put("createdAt", System.currentTimeMillis());
         room.put("isAvailable", true);
-        room.put("roomsCount", Integer.parseInt(etRoomsCount.getText().toString()));
-        room.put("bathroomsCount", Integer.parseInt(etBathroomsCount.getText().toString()));
+        room.put("roomsCount", roomsCount);
+        room.put("bathroomsCount", bathroomsCount);
+        room.put("postedBy", currentUserId); // ✅ CRITICAL: This MUST be the real user ID
+        room.put("status", "active");
 
-        Log.d(TAG, "Saving room with ID: " + roomId);
-        Log.d(TAG, "Data size: " + room.toString().length() + " characters");
+        // ✅ Log the postedBy field to verify
+        Log.d(TAG, "Room data - postedBy: " + room.get("postedBy"));
+        Log.d(TAG, "Room data - owner ID type: " + room.get("postedBy").getClass().getSimpleName());
 
-        db.collection("rooms").document(roomId)
+        // Save to Firestore
+        db.collection("rooms").document(currentRoomId)
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
-                    showLoading(false);
-                    // Trigger notification
-                    sendRoomNotification(); //
-                    notifyBackendForNewRoom(); // <-- trigger notification here
+                    Log.d(TAG, "✅ Room saved successfully with ID: " + currentRoomId);
 
-                    Log.d(TAG, "Room saved successfully!");
+                    // ✅ Verify the document was saved correctly
+                    db.collection("rooms").document(currentRoomId).get()
+                            .addOnSuccessListener(doc -> {
+                                if (doc.exists()) {
+                                    String savedPostedBy = doc.getString("postedBy");
+                                    Log.d(TAG, "✅ VERIFICATION: postedBy field saved as: '" + savedPostedBy + "'");
 
-                    new MaterialAlertDialogBuilder(this)
-                            .setTitle("Success!")
-                            .setMessage("Your property has been posted successfully!\n\n" +
-                                    "Note: Images will be added in a future update.")
-                            .setPositiveButton("OK", (dialog, which) -> {
-                                Intent intent = new Intent();
-                                intent.putExtra("room_posted", true);
-                                setResult(RESULT_OK, intent);
-                                finish();
+                                    if (savedPostedBy == null || savedPostedBy.isEmpty()) {
+                                        Log.e(TAG, "❌ CRITICAL ERROR: postedBy field was not saved!");
+                                        showError("Error saving owner information. Please try again.");
+                                    } else if ("anonymous".equals(savedPostedBy)) {
+                                        Log.e(TAG, "❌ CRITICAL ERROR: postedBy is still 'anonymous'!");
+                                        showError("Authentication error. Please login again.");
+                                    } else {
+                                        Log.d(TAG, "✅ Room posted successfully with owner ID: " + savedPostedBy);
+                                        showSuccess();
+                                    }
+                                } else {
+                                    Log.e(TAG, "❌ Document not found after save!");
+                                    showError("Error saving room. Please try again.");
+                                }
                             })
-                            .setCancelable(false)
-                            .show();
+                            .addOnFailureListener(e -> {
+                                Log.e(TAG, "❌ Failed to verify saved document", e);
+                                showSuccess(); // Still show success but log error
+                            });
+
+                    // Send notifications
+                    sendNewRoomNotification();
+                    notifyBackendForNewRoom();
+
+                    showLoading(false);
                 })
                 .addOnFailureListener(e -> {
                     showLoading(false);
                     showError("Failed to post: " + e.getMessage());
-                    Log.e(TAG, "Firestore error: " + e.getMessage(), e);
+                    Log.e(TAG, "❌ Firestore error: " + e.getMessage(), e);
                 });
     }
 
+    private void showSuccess() {
+        runOnUiThread(() -> {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("Success!")
+                    .setMessage("Your property has been posted successfully!\n\n" +
+                            "Note: Images will be added in a future update.")
+                    .setPositiveButton("OK", (dialog, which) -> {
+                        Intent intent = new Intent();
+                        intent.putExtra("room_posted", true);
+                        intent.putExtra("room_id", currentRoomId);
+                        setResult(RESULT_OK, intent);
+                        finish();
+                    })
+                    .setCancelable(false)
+                    .show();
+        });
+    }
 
+    private void sendNewRoomNotification() {
+        String url = "https://fcm.googleapis.com/fcm/send";
+
+        new Thread(() -> {
+            try {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+
+                org.json.JSONObject json = new org.json.JSONObject();
+                json.put("to", "/topics/rooms");
+
+                org.json.JSONObject notification = new org.json.JSONObject();
+                notification.put("title", "New Room Available 🏠");
+                notification.put("body", "Check out the latest room posted!");
+
+                json.put("notification", notification);
+
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        json.toString(),
+                        okhttp3.MediaType.parse("application/json")
+                );
+
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url(url)
+                        .post(body)
+                        .addHeader("Authorization", "key=YOUR_SERVER_KEY")
+                        .build();
+
+                client.newCall(request).execute();
+
+            } catch (Exception e) {
+                Log.e("FCM", "Error sending notification: " + e.getMessage());
+            }
+        }).start();
+    }
 
     private void notifyBackendForNewRoom() {
+        if (currentRoomId == null || currentRoomId.isEmpty()) {
+            Log.e("BackendNotify", "Cannot notify: roomId is null");
+            return;
+        }
+
         new Thread(() -> {
             try {
                 okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
 
                 okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url("http://10.0.2.2:8080/notify-new-room?roomId=" + roomId)
+                        .url("http://10.0.2.2:8080/notify-new-room?roomId=" + currentRoomId)
                         .post(okhttp3.RequestBody.create(new byte[0]))
                         .build();
 
@@ -679,7 +772,9 @@ public class PostRoomActivity extends AppCompatActivity {
                 if (progressIndicator != null) {
                     progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
                 }
-                btnSubmitRoom.setEnabled(!show);
+                if (btnSubmitRoom != null) {
+                    btnSubmitRoom.setEnabled(!show);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error updating loading UI: " + e.getMessage());
             }
@@ -707,6 +802,13 @@ public class PostRoomActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         if (mapViewPost != null) mapViewPost.onResume();
+
+        // ✅ Re-check authentication when activity resumes
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) {
+            Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
+            finish();
+        }
     }
 
     @Override
@@ -715,13 +817,12 @@ public class PostRoomActivity extends AppCompatActivity {
         if (mapViewPost != null) mapViewPost.onPause();
     }
 
-
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE && grantResults.length > 0 &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             setupMap();
         }
     }

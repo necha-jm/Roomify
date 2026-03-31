@@ -14,14 +14,16 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class BookingRequestsActivity extends AppCompatActivity {
 
@@ -35,11 +37,17 @@ public class BookingRequestsActivity extends AppCompatActivity {
 
     private String currentUserId;
     private String userRole;
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_booking_requests);
+
+        // Initialize Firebase
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         // Initialize views
         recyclerView = findViewById(R.id.recyclerView);
@@ -49,12 +57,15 @@ public class BookingRequestsActivity extends AppCompatActivity {
         // Add error message TextView to layout if not present
         tvErrorMessage = findViewById(R.id.tvErrorMessage);
         if (tvErrorMessage == null) {
-            // If no error TextView, create a reference
             tvErrorMessage = new TextView(this);
         }
 
         // Get user info
-        currentUserId = FirebaseUtils.getCurrentUserId();
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser != null) {
+            currentUserId = currentUser.getUid();
+        }
+
         userRole = getIntent().getStringExtra("role");
 
         Log.d(TAG, "=== START ===");
@@ -62,7 +73,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
         Log.d(TAG, "Role: " + userRole);
 
         // Check if user is logged in
-        if (currentUserId == null) {
+        if (currentUserId == null || currentUserId.isEmpty()) {
             Log.e(TAG, "User not logged in!");
             Toast.makeText(this, "Please login to view bookings", Toast.LENGTH_SHORT).show();
             finish();
@@ -71,33 +82,8 @@ public class BookingRequestsActivity extends AppCompatActivity {
 
         setupRecyclerView();
 
-        // Test Firestore connection first
-        testFirestoreConnection();
-    }
-
-    private void testFirestoreConnection() {
-        Log.d(TAG, "Testing Firestore connection...");
-
-        FirebaseFirestore.getInstance()
-                .collection("rooms")
-                .limit(1)
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        Log.d(TAG, "✅ Firestore connection successful!");
-                        Log.d(TAG, "Found " + task.getResult().size() + " rooms");
-                        loadBookingRequests();
-                    } else {
-                        Log.e(TAG, "❌ Firestore connection failed!", task.getException());
-                        progressBar.setVisibility(View.GONE);
-                        if (tvErrorMessage != null) {
-                            tvErrorMessage.setVisibility(View.VISIBLE);
-                            tvErrorMessage.setText("Connection error: " + task.getException().getMessage());
-                        }
-                        Toast.makeText(this, "Firestore connection failed: " +
-                                task.getException().getMessage(), Toast.LENGTH_LONG).show();
-                    }
-                });
+        // Load booking requests
+        loadBookingRequests();
     }
 
     private void setupRecyclerView() {
@@ -124,10 +110,11 @@ public class BookingRequestsActivity extends AppCompatActivity {
     private void loadUserRequests() {
         Log.d(TAG, "Loading user requests for: " + currentUserId);
 
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        // Query user's bookings from users/{userId}/bookings
+        db.collection("users")
                 .document(currentUserId)
                 .collection("bookings")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
                 .get()
                 .addOnCompleteListener(task -> {
                     progressBar.setVisibility(View.GONE);
@@ -143,26 +130,40 @@ public class BookingRequestsActivity extends AppCompatActivity {
                             if (request != null) {
                                 request.setId(doc.getId());
 
-                                // Ensure roomId is set (might be missing in some documents)
+                                // Ensure all required fields are set
                                 if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
                                     String roomIdFromDoc = doc.getString("roomId");
                                     if (roomIdFromDoc != null) {
                                         request.setRoomId(roomIdFromDoc);
+                                    } else {
+                                        Log.e(TAG, "Booking missing roomId: " + doc.getId());
+                                        continue; // Skip this booking
                                     }
                                 }
 
-                                // Ensure roomTitle is set
                                 if (request.getRoomTitle() == null || request.getRoomTitle().isEmpty()) {
-                                    String roomTitleFromDoc = doc.getString("roomTitle");
-                                    if (roomTitleFromDoc != null) {
-                                        request.setRoomTitle(roomTitleFromDoc);
+                                    request.setRoomTitle("Loading...");
+                                    // Try to fetch room title
+                                    fetchRoomTitle(request);
+                                }
+
+                                if (request.getStatus() == null || request.getStatus().isEmpty()) {
+                                    request.setStatus("pending");
+                                }
+
+                                if (request.getTimestamp() == 0) {
+                                    Long timestamp = doc.getLong("timestamp");
+                                    if (timestamp != null) {
+                                        request.setTimestamp(timestamp);
                                     } else {
-                                        request.setRoomTitle("Unknown Room");
+                                        request.setTimestamp(System.currentTimeMillis());
                                     }
                                 }
 
                                 requests.add(request);
-                                Log.d(TAG, "Added booking: " + request.getId() + " - Room: " + request.getRoomTitle());
+                                Log.d(TAG, "Added booking: " + request.getId() +
+                                        " - Room: " + request.getRoomTitle() +
+                                        " - Status: " + request.getStatus());
                             } else {
                                 Log.w(TAG, "Failed to convert document to BookingRequest: " + doc.getId());
                             }
@@ -172,12 +173,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
 
                         if (requests.isEmpty()) {
                             tvNoRequests.setVisibility(View.VISIBLE);
-                            tvNoRequests.setText("No bookings found");
+                            tvNoRequests.setText("No booking requests found");
                         }
 
                     } else {
                         Log.e(TAG, "Error loading user bookings", task.getException());
-                        Toast.makeText(this, "Error: " +
+                        Toast.makeText(this, "Error loading bookings: " +
                                 task.getException().getMessage(), Toast.LENGTH_LONG).show();
                         tvNoRequests.setVisibility(View.VISIBLE);
                         tvNoRequests.setText("Error loading bookings");
@@ -185,11 +186,33 @@ public class BookingRequestsActivity extends AppCompatActivity {
                 });
     }
 
+    private void fetchRoomTitle(BookingRequest request) {
+        if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
+            return;
+        }
+
+        db.collection("rooms")
+                .document(request.getRoomId())
+                .get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        String title = doc.getString("title");
+                        if (title != null && !title.isEmpty()) {
+                            request.setRoomTitle(title);
+                            adapter.notifyDataSetChanged();
+                        }
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to fetch room title", e);
+                });
+    }
+
     private void loadOwnerRequests() {
         Log.d(TAG, "Loading owner requests for: " + currentUserId);
 
-        FirebaseFirestore.getInstance()
-                .collection("rooms")
+        // First, get all rooms owned by this user
+        db.collection("rooms")
                 .whereEqualTo("postedBy", currentUserId)
                 .get()
                 .addOnCompleteListener(task -> {
@@ -204,13 +227,9 @@ public class BookingRequestsActivity extends AppCompatActivity {
                             return;
                         }
 
-                        // Clear adapter before adding new requests
                         adapter.clearRequests();
 
-                        // Track how many rooms we've processed
-                        final int[] processedRooms = {0};
-                        final int totalRooms = roomSnapshot.size();
-
+                        // Process each room's bookings
                         for (DocumentSnapshot roomDoc : roomSnapshot.getDocuments()) {
                             String roomId = roomDoc.getId();
                             String roomTitle = roomDoc.getString("title");
@@ -219,149 +238,127 @@ public class BookingRequestsActivity extends AppCompatActivity {
                                 roomTitle = "Unknown Room";
                             }
 
-                            Log.d(TAG, "Checking room: " + roomId + " - " + roomTitle);
+                            Log.d(TAG, "Checking bookings for room: " + roomId + " - " + roomTitle);
 
+                            // Query bookings for this room
                             String finalRoomTitle = roomTitle;
-                            roomDoc.getReference()
+                            db.collection("rooms")
+                                    .document(roomId)
                                     .collection("bookings")
+                                    .orderBy("timestamp", Query.Direction.DESCENDING)
                                     .get()
                                     .addOnCompleteListener(bookingTask -> {
-                                        processedRooms[0]++;
-
                                         if (bookingTask.isSuccessful()) {
                                             QuerySnapshot bookingSnapshot = bookingTask.getResult();
                                             Log.d(TAG, "Room " + roomId + " has " + bookingSnapshot.size() + " bookings");
 
                                             for (DocumentSnapshot bookingDoc : bookingSnapshot.getDocuments()) {
-                                                // Try to convert to BookingRequest first
-                                                BookingRequest request = bookingDoc.toObject(BookingRequest.class);
-
-                                                if (request == null) {
-                                                    // If conversion fails, create manually
-                                                    Log.w(TAG, "Failed to convert booking doc, creating manually: " + bookingDoc.getId());
-                                                    request = new BookingRequest();
-
-                                                    // Manually set fields from document
-                                                    request.setId(bookingDoc.getId());
-                                                    request.setRoomId(roomId);
-                                                    request.setRoomTitle(finalRoomTitle);
-
-                                                    // Get userId from document
-                                                    String userId = bookingDoc.getString("userId");
-                                                    if (userId != null) {
-                                                        request.setUserId(userId);
-                                                    } else {
-                                                        Log.e(TAG, "Booking missing userId: " + bookingDoc.getId());
-                                                    }
-
-                                                    // Get userName from document
-                                                    String userName = bookingDoc.getString("userName");
-                                                    if (userName != null) {
-                                                        request.setUserName(userName);
-                                                    } else {
-                                                        request.setUserName("Unknown User");
-                                                    }
-
-                                                    // Get userPhone from document
-                                                    String userPhone = bookingDoc.getString("userPhone");
-                                                    if (userPhone != null) {
-                                                        request.setUserPhone(userPhone);
-                                                    }
-
-                                                    // Get status from document
-                                                    String status = bookingDoc.getString("status");
-                                                    if (status != null) {
-                                                        request.setStatus(status);
-                                                    } else {
-                                                        request.setStatus("pending");
-                                                    }
-
-                                                    // Get timestamp from document
-                                                    Long timestamp = bookingDoc.getLong("timestamp");
-                                                    if (timestamp != null) {
-                                                        request.setTimestamp(timestamp);
-                                                    }
-
-                                                    // Get bookingDate from document
-                                                    String bookingDate = bookingDoc.getString("bookingDate");
-                                                    if (bookingDate != null) {
-                                                        request.setBookingDate(bookingDate);
-                                                    }
-                                                } else {
-                                                    // Conversion succeeded, ensure all fields are set
-                                                    request.setId(bookingDoc.getId());
-
-                                                    // Ensure roomId is set
-                                                    if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
-                                                        request.setRoomId(roomId);
-                                                    }
-
-                                                    // Ensure roomTitle is set
-                                                    if (request.getRoomTitle() == null || request.getRoomTitle().isEmpty()) {
-                                                        request.setRoomTitle(finalRoomTitle);
-                                                    }
-
-                                                    // Ensure userId exists (critical for actions)
-                                                    if (request.getUserId() == null || request.getUserId().isEmpty()) {
-                                                        String userId = bookingDoc.getString("userId");
-                                                        if (userId != null) {
-                                                            request.setUserId(userId);
-                                                        } else {
-                                                            Log.e(TAG, "CRITICAL: Booking missing userId: " + bookingDoc.getId());
-                                                        }
-                                                    }
-
-                                                    // Ensure userName exists
-                                                    if (request.getUserName() == null || request.getUserName().isEmpty()) {
-                                                        String userName = bookingDoc.getString("userName");
-                                                        if (userName != null) {
-                                                            request.setUserName(userName);
-                                                        } else {
-                                                            request.setUserName("Unknown User");
-                                                        }
-                                                    }
+                                                // Try to get booking data
+                                                Map<String, Object> bookingData = bookingDoc.getData();
+                                                if (bookingData == null) {
+                                                    Log.w(TAG, "Booking data is null for: " + bookingDoc.getId());
+                                                    continue;
                                                 }
 
-                                                // Validate required fields before adding
-                                                if (request.getUserId() != null && !request.getUserId().isEmpty()) {
-                                                    adapter.addRequest(request);
-                                                    Log.d(TAG, "Added booking: " + request.getId() +
-                                                            " - User: " + request.getUserName() +
-                                                            " - Room: " + request.getRoomTitle());
-                                                } else {
-                                                    Log.e(TAG, "Skipping booking without userId: " + bookingDoc.getId());
-                                                    Toast.makeText(this, "Warning: Some bookings missing user data", Toast.LENGTH_SHORT).show();
+                                                BookingRequest request = new BookingRequest();
+                                                request.setId(bookingDoc.getId());
+                                                request.setRoomId(roomId);
+                                                request.setRoomTitle(finalRoomTitle);
+
+                                                // Get user ID from booking
+                                                String userId = (String) bookingData.get("userId");
+                                                if (userId == null || userId.isEmpty()) {
+                                                    Log.e(TAG, "Booking missing userId: " + bookingDoc.getId());
+                                                    continue; // Skip this booking
                                                 }
+                                                request.setUserId(userId);
+
+                                                // Get status
+                                                String status = (String) bookingData.get("status");
+                                                request.setStatus(status != null ? status : "pending");
+
+                                                // Get timestamp
+                                                Long timestamp = (Long) bookingData.get("timestamp");
+                                                request.setTimestamp(timestamp != null ? timestamp : System.currentTimeMillis());
+
+                                                // Get booking date
+                                                String bookingDate = (String) bookingData.get("bookingDate");
+                                                request.setBookingDate(bookingDate != null ? bookingDate : "");
+
+                                                // Now fetch user details
+                                                fetchUserDetails(request, userId);
                                             }
                                         } else {
                                             Log.e(TAG, "Error loading bookings for room: " + roomId,
                                                     bookingTask.getException());
                                         }
 
-                                        // All rooms processed
-                                        if (processedRooms[0] == totalRooms) {
-                                            progressBar.setVisibility(View.GONE);
-                                            if (adapter.getItemCount() == 0) {
-                                                tvNoRequests.setVisibility(View.VISIBLE);
-                                                tvNoRequests.setText("No booking requests for your rooms");
-                                            }
-                                        }
+                                        // Check if all rooms have been processed
+                                        adapter.notifyDataSetChanged();
                                     });
                         }
+
+                        // Hide progress bar after a delay
+                        new android.os.Handler().postDelayed(() -> {
+                            progressBar.setVisibility(View.GONE);
+                            if (adapter.getItemCount() == 0) {
+                                tvNoRequests.setVisibility(View.VISIBLE);
+                                tvNoRequests.setText("No booking requests for your rooms");
+                            }
+                        }, 2000);
 
                     } else {
                         progressBar.setVisibility(View.GONE);
                         Exception e = task.getException();
                         Log.e(TAG, "Error loading rooms", e);
-                        Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Error loading rooms: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         tvNoRequests.setVisibility(View.VISIBLE);
-                        tvNoRequests.setText("Error: " + e.getMessage());
+                        tvNoRequests.setText("Error loading rooms");
                     }
                 });
     }
 
+    private void fetchUserDetails(BookingRequest request, String userId) {
+        db.collection("users")
+                .document(userId)
+                .get()
+                .addOnSuccessListener(userDoc -> {
+                    if (userDoc.exists()) {
+                        // Get user name
+                        String userName = userDoc.getString("name");
+                        if (userName == null || userName.isEmpty()) {
+                            userName = userDoc.getString("fullName");
+                        }
+                        if (userName == null || userName.isEmpty()) {
+                            userName = "User";
+                        }
+                        request.setUserName(userName);
+
+                        // Get user phone
+                        String userPhone = userDoc.getString("phone");
+                        if (userPhone == null || userPhone.isEmpty()) {
+                            userPhone = userDoc.getString("contactPhone");
+                        }
+                        request.setUserPhone(userPhone != null ? userPhone : "");
+
+                        // Add to adapter
+                        adapter.addRequest(request);
+                        Log.d(TAG, "Added booking with user details: " + userName + " - " + request.getRoomTitle());
+                    } else {
+                        Log.w(TAG, "User document not found for ID: " + userId);
+                        request.setUserName("Unknown User");
+                        adapter.addRequest(request);
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to fetch user details", e);
+                    request.setUserName("Unknown User");
+                    adapter.addRequest(request);
+                });
+    }
+
     private void onBookingAction(BookingRequest request, String action) {
-        // Validate request has required fields before proceeding
+        // Validate request has required fields
         if (request == null) {
             Log.e(TAG, "onBookingAction: request is null");
             Toast.makeText(this, "Error: Invalid booking request", Toast.LENGTH_SHORT).show();
@@ -377,6 +374,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
         if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
             Log.e(TAG, "onBookingAction: room ID is null or empty");
             Toast.makeText(this, "Error: Invalid room ID", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (request.getUserId() == null || request.getUserId().isEmpty()) {
+            Log.e(TAG, "onBookingAction: user ID is null or empty");
+            Toast.makeText(this, "Error: Cannot process booking - missing user ID", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -405,17 +408,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
         String bookingId = request.getId();
         String userId = request.getUserId();
 
-        // Validate required fields
-        if (userId == null || userId.isEmpty()) {
-            Log.e(TAG, "acceptBooking: userId is null or empty");
-            Toast.makeText(this, "Error: Cannot accept booking - missing user ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         Log.d(TAG, "Accepting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
 
-        // Update in ROOM
-        FirebaseUtils.getRoomBookingsCollection(roomId)
+        // Update in ROOM bookings collection
+        db.collection("rooms")
+                .document(roomId)
+                .collection("bookings")
                 .document(bookingId)
                 .update("status", "approved")
                 .addOnSuccessListener(aVoid -> {
@@ -425,9 +423,8 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.e(TAG, "❌ Failed to update room booking", e);
                 });
 
-        // Update in USER
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        // Update in USER bookings collection
+        db.collection("users")
                 .document(userId)
                 .collection("bookings")
                 .document(bookingId)
@@ -453,17 +450,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
         String bookingId = request.getId();
         String userId = request.getUserId();
 
-        // Validate required fields
-        if (userId == null || userId.isEmpty()) {
-            Log.e(TAG, "rejectBooking: userId is null or empty");
-            Toast.makeText(this, "Error: Cannot reject booking - missing user ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         Log.d(TAG, "Rejecting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
 
-        // Update in ROOM
-        FirebaseUtils.getRoomBookingsCollection(roomId)
+        // Update in ROOM bookings collection
+        db.collection("rooms")
+                .document(roomId)
+                .collection("bookings")
                 .document(bookingId)
                 .update("status", "rejected")
                 .addOnSuccessListener(aVoid -> {
@@ -473,9 +465,8 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.e(TAG, "❌ Failed to update room booking", e);
                 });
 
-        // Update in USER
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        // Update in USER bookings collection
+        db.collection("users")
                 .document(userId)
                 .collection("bookings")
                 .document(bookingId)
@@ -501,17 +492,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
         String bookingId = request.getId();
         String userId = request.getUserId();
 
-        // Validate required fields
-        if (userId == null || userId.isEmpty()) {
-            Log.e(TAG, "cancelBooking: userId is null or empty");
-            Toast.makeText(this, "Error: Cannot cancel booking - missing user ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         Log.d(TAG, "Cancelling booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
 
-        // Update in ROOM
-        FirebaseUtils.getRoomBookingsCollection(roomId)
+        // Update in ROOM bookings collection
+        db.collection("rooms")
+                .document(roomId)
+                .collection("bookings")
                 .document(bookingId)
                 .update("status", "cancelled")
                 .addOnSuccessListener(aVoid -> {
@@ -521,9 +507,8 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.e(TAG, "❌ Failed to update room booking", e);
                 });
 
-        // Update in USER
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        // Update in USER bookings collection
+        db.collection("users")
                 .document(userId)
                 .collection("bookings")
                 .document(bookingId)
@@ -544,17 +529,12 @@ public class BookingRequestsActivity extends AppCompatActivity {
         String bookingId = request.getId();
         String userId = request.getUserId();
 
-        // Validate required fields
-        if (userId == null || userId.isEmpty()) {
-            Log.e(TAG, "deleteBooking: userId is null or empty");
-            Toast.makeText(this, "Error: Cannot delete booking - missing user ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         Log.d(TAG, "Deleting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
 
-        // Delete from ROOM
-        FirebaseUtils.getRoomBookingsCollection(roomId)
+        // Delete from ROOM bookings collection
+        db.collection("rooms")
+                .document(roomId)
+                .collection("bookings")
                 .document(bookingId)
                 .delete()
                 .addOnSuccessListener(aVoid -> {
@@ -564,9 +544,8 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.e(TAG, "❌ Failed to delete room booking", e);
                 });
 
-        // Delete from USER
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        // Delete from USER bookings collection
+        db.collection("users")
                 .document(userId)
                 .collection("bookings")
                 .document(bookingId)
