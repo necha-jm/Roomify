@@ -69,7 +69,7 @@ public class SplashActivity extends AppCompatActivity {
                                     String role = documentSnapshot.getString("role");
 
                                     if ("owner".equals(role)) {
-                                        startActivity(new Intent(this, ProfileActivity.class));
+                                        startActivity(new Intent(this, OwnerDashboard.class));
                                     } else {
                                         startActivity(new Intent(this, LocationMap.class));
                                     }

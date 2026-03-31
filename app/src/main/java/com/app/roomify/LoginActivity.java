@@ -68,24 +68,8 @@ public class LoginActivity extends AppCompatActivity {
         FirebaseUser currentUser = mAuth.getCurrentUser();
 
         if (currentUser != null) {
-
-            // Reload user to get latest verification status
-            currentUser.reload().addOnCompleteListener(task -> {
-
-                if (currentUser.isEmailVerified() || currentUser.isAnonymous()) {
-
-                    // User already logged in → skip login screen
-                    goToDashboard();
-
-                } else {
-                    // User exists but not verified
-                    Toast.makeText(this,
-                            "Please verify your email first",
-                            Toast.LENGTH_SHORT).show();
-
-                    mAuth.signOut(); // force login again
-                }
-            });
+            // User already logged in → fetch role and go correctly
+            checkUserAndRedirect(currentUser);
         }
 
         // Initialize views
@@ -264,51 +248,33 @@ public class LoginActivity extends AppCompatActivity {
         mAuth.signInWithEmailAndPassword(email, password)
                 .addOnCompleteListener(this, task -> {
                     showLoading(false);
+
                     if (task.isSuccessful()) {
                         Log.d(TAG, "signInWithEmail:success");
+
                         FirebaseUser user = mAuth.getCurrentUser();
 
                         if (user != null) {
-                            // Check if email is verified
-                            if (user.isEmailVerified()) {
-                                // Update emailVerified status in Firestore
-                                updateEmailVerifiedStatus(user.getUid());
-                                // Check user role before navigating
-                                checkUserRoleAndNavigate(user.getUid());
-                            } else {
-                                // Email not verified - show message and sign out
-                                Toast.makeText(LoginActivity.this,
-                                        "Please verify your email address. A verification email has been sent to " + email,
-                                        Toast.LENGTH_LONG).show();
-
-                                // Resend verification email
-                                user.sendEmailVerification()
-                                        .addOnCompleteListener(verifyTask -> {
-                                            if (verifyTask.isSuccessful()) {
-                                                Toast.makeText(LoginActivity.this,
-                                                        "Verification email resent. Please check your inbox.",
-                                                        Toast.LENGTH_SHORT).show();
-                                            }
-                                        });
-
-                                mAuth.signOut();
-                            }
+                            // ✅ مباشرة تسجيل الدخول بدون التحقق من الإيميل
+                            updateEmailVerifiedStatus(user.getUid()); // optional
+                            checkUserRoleAndNavigate(user.getUid());
                         }
+
                     } else {
                         Log.w(TAG, "signInWithEmail:failure", task.getException());
 
-                        // Handle specific error cases
-                        String errorMessage = task.getException().getMessage();
-                        if (errorMessage != null) {
-                            if (errorMessage.contains("password")) {
-                                passwordLayout.setError("Incorrect password");
-                            } else if (errorMessage.contains("email")) {
-                                emailLayout.setError("Email not found");
-                            } else {
-                                Toast.makeText(LoginActivity.this,
-                                        "Authentication failed: " + errorMessage,
-                                        Toast.LENGTH_LONG).show();
-                            }
+                        String errorMessage = task.getException() != null
+                                ? task.getException().getMessage()
+                                : "Authentication failed";
+
+                        if (errorMessage.contains("password")) {
+                            passwordLayout.setError("Incorrect password");
+                        } else if (errorMessage.contains("email")) {
+                            emailLayout.setError("Email not found");
+                        } else {
+                            Toast.makeText(LoginActivity.this,
+                                    "Authentication failed: " + errorMessage,
+                                    Toast.LENGTH_LONG).show();
                         }
                     }
                 });
@@ -322,6 +288,41 @@ public class LoginActivity extends AppCompatActivity {
                 })
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Failed to update email verified status", e);
+                });
+    }
+
+    private void checkUserAndRedirect(FirebaseUser user) {
+        showLoading(true);
+
+        String userId = user.getUid();
+
+        db.collection("users").document(userId).get()
+                .addOnSuccessListener(documentSnapshot -> {
+                    showLoading(false);
+
+                    if (documentSnapshot.exists()) {
+                        String role = documentSnapshot.getString("role");
+
+                        if (role != null) {
+                            // ✅ Go to correct dashboard based on role
+                            navigateBasedOnRole(role);
+                        } else {
+                            // No role → send to registration
+                            goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                        }
+
+                    } else {
+                        // User not in Firestore → new user
+                        goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    showLoading(false);
+                    Log.e(TAG, "Auto-login failed", e);
+
+                    Toast.makeText(this,
+                            "Failed to load user data",
+                            Toast.LENGTH_SHORT).show();
                 });
     }
     private void signInAsGuest() {
