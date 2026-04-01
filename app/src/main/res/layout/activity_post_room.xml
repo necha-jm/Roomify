@@ -632,7 +632,7 @@
                         android:layout_weight="1"
                         android:layout_height="48dp"
                         android:text="Contract"
-                        app:icon="@drawable/ic_call"
+                        app:icon="@drawable/ic_contract"
                         app:iconGravity="textStart"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
