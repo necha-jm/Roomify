@@ -111,7 +111,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private ImageView apartmentIcon;
     private MaterialCardView addRoomCard;
     private MaterialCardView languageCard;
-    private LinearLayout languageSelection,tab_profile;
+    private LinearLayout languageSelection,tab_profile, tab_SELECT;
     private Chip chipEnglish;
     private Chip chipSwahili;
     private ImageView btnSettings;
@@ -301,6 +301,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             searchCard = findViewById(R.id.search_card);
             searchEditText = findViewById(R.id.search_edittext);
             fabLocation = findViewById(R.id.fab_location);
+            tab_SELECT = findViewById(R.id.tab_SELECT);
 
             // Bottom sheet
             bottomSheet = findViewById(R.id.bottom_sheet);
@@ -333,6 +334,27 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             Log.e(TAG, "Error initializing views: " + e.getMessage());
             Toast.makeText(this, "Error initializing UI", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void navigateBasedOnRole() {
+
+        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .get()
+                .addOnSuccessListener(doc -> {
+
+                    String role = doc.getString("role");
+
+                    if ("tenant".equals(role)) {
+                        startActivity(new Intent(this, DashboardActivity.class));
+                    } else if ("owner".equals(role)) {
+                        startActivity(new Intent(this, OwnerDashboard.class));
+                    }
+
+                });
     }
 
     private void setupClickListeners() {
@@ -372,6 +394,14 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         return;
                     }
                     filterApartmentsOnMap();
+                });
+            }
+
+            //selection menu according thpo role
+            if(tab_SELECT != null){
+                tab_SELECT.setOnClickListener(v -> {
+                            navigateBasedOnRole();
+
                 });
             }
 
