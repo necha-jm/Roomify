@@ -8,26 +8,42 @@ import android.location.Geocoder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+
+import org.osmdroid.config.Configuration;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Marker;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.HashMap;
 import java.util.Map;
 
 public class RoomDetailsActivity extends AppCompatActivity {
@@ -35,21 +51,41 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private static final String TAG = "RoomDetailsActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 200;
 
-    private TextView tvTitle, tvPrice, tvAddress, tvDescription, tvBedrooms, tvPostedDate;
-    private MaterialButton btnGetDirections, btnContactOwner;
+    // ==================== UI COMPONENTS ====================
+    private TextView tvTitle, tvPrice, tvAddress, tvDescription, tvBedrooms, tvBathrooms, tvArea, tvPostedDate;
+    private TextView tvRoomStatus, tvOwnerName, tvOwnerRating, tvMemberSince;
+    private ImageView ivOwnerProfile;
+    private MaterialButton btnGetDirections, btnCallOwner, btnMessageOwner;
     private Button btnBookNow;
+    private ImageButton btnFavorite;
+    private ViewPager2 viewPagerImages;
+    private LinearLayout imageIndicator;
+    private RecyclerView rvAmenities;
+    private View amenitiesCard;
+    private MapView mapPreview;
 
+    // ==================== DATA HOLDERS ====================
     private double roomLat = 0, roomLng = 0;
     private String roomId;
     private Room currentRoom;
     private boolean alreadyRequested = false;
-    private boolean isRoomLoaded = false;  // ✅ ADD THIS LINE
+    private boolean isRoomLoaded = false;
+    private List<String> imageUrls = new ArrayList<>();
+    private List<String> amenitiesList = new ArrayList<>();
+
+    // Firebase
     private FusedLocationProviderClient fusedLocationClient;
+    private FirebaseFirestore db;
+    private FirebaseStorage storage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_room_details);
+
+        // Initialize
+        initializeFirebase();
+        initializeOSMDroid();
 
         // Get roomId
         roomId = getIntent().getStringExtra("room_id");
@@ -60,62 +96,109 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
 
         // Initialize views
+        initializeViews();
+        setupClickListeners();
+
+        // Load data
+        btnBookNow.setEnabled(false);
+        btnBookNow.setText("Loading...");
+
+        loadRoomDetails();
+        checkIfAlreadyRequested();
+        checkIfFavorite();
+    }
+
+    private void initializeFirebase() {
+        db = FirebaseFirestore.getInstance();
+        storage = FirebaseStorage.getInstance();
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+    }
+
+    private void initializeOSMDroid() {
+        try {
+            Configuration.getInstance().load(
+                    getApplicationContext(),
+                    getSharedPreferences("osmdroid_prefs", MODE_PRIVATE)
+            );
+        } catch (Exception e) {
+            Log.w(TAG, "OSMDroid init: " + e.getMessage());
+        }
+    }
+
+    private void initializeViews() {
+        // Basic Info
         tvTitle = findViewById(R.id.tvRoomTitle);
         tvPrice = findViewById(R.id.tvRoomPrice);
         tvAddress = findViewById(R.id.tvRoomAddress);
         tvDescription = findViewById(R.id.tvRoomDescription);
         tvBedrooms = findViewById(R.id.tvBedrooms);
+        tvBathrooms = findViewById(R.id.tvBathrooms);
+        tvArea = findViewById(R.id.tvArea);
         tvPostedDate = findViewById(R.id.tvPostedDate);
+        tvRoomStatus = findViewById(R.id.tvRoomStatus);
+
+        // Owner Info
+        tvOwnerName = findViewById(R.id.tvOwnerName);
+        tvOwnerRating = findViewById(R.id.tvOwnerRating);
+        tvMemberSince = findViewById(R.id.tvMemberSince);
+        ivOwnerProfile = findViewById(R.id.ivOwnerProfile);
+
+        // Buttons
         btnGetDirections = findViewById(R.id.btnGetDirections);
-        btnContactOwner = findViewById(R.id.btnCallOwner);
+        btnCallOwner = findViewById(R.id.btnCallOwner);
+        btnMessageOwner = findViewById(R.id.btnMessageOwner);
         btnBookNow = findViewById(R.id.btnBookNow);
+        btnFavorite = findViewById(R.id.btnFavorite);
 
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        // Media
+        viewPagerImages = findViewById(R.id.viewPagerImages);
+        imageIndicator = findViewById(R.id.imageIndicator);
+        rvAmenities = findViewById(R.id.rvAmenities);
+        amenitiesCard = findViewById(R.id.tvAmenity);
 
-        // Disable book button while loading
-        btnBookNow.setEnabled(false);
-        btnBookNow.setText("Loading...");
+        // Map
+        mapPreview = findViewById(R.id.mapPreview);
 
-        // Load room details
-        loadRoomDetails();
+        // Setup RecyclerView
+        if (rvAmenities != null) {
+            rvAmenities.setLayoutManager(new LinearLayoutManager(this));
+        }
+    }
 
-        // Button listeners
-        btnGetDirections.setOnClickListener(v -> openDirections());
-        btnContactOwner.setOnClickListener(v -> contactRoomOwner());
-        btnBookNow.setOnClickListener(v -> {
-            if (alreadyRequested) {
-                Toast.makeText(this, "You already requested this room", Toast.LENGTH_SHORT).show();
-            } else {
-                requestRoomBooking();
-            }
-        });
-
-        checkIfAlreadyRequested();
+    private void setupClickListeners() {
+        if (btnGetDirections != null) {
+            btnGetDirections.setOnClickListener(v -> openDirections());
+        }
+        if (btnCallOwner != null) {
+            btnCallOwner.setOnClickListener(v -> contactRoomOwner());
+        }
+        if (btnMessageOwner != null) {
+            btnMessageOwner.setOnClickListener(v -> messageRoomOwner());
+        }
+        if (btnBookNow != null) {
+            btnBookNow.setOnClickListener(v -> {
+                if (alreadyRequested) {
+                    Toast.makeText(this, "You already requested this room", Toast.LENGTH_SHORT).show();
+                } else {
+                    requestRoomBooking();
+                }
+            });
+        }
+        if (btnFavorite != null) {
+            btnFavorite.setOnClickListener(v -> toggleFavorite());
+        }
     }
 
     private void loadRoomDetails() {
         FirebaseUtils.getRoom(roomId, task -> {
             if (!task.isSuccessful() || task.getResult() == null) {
                 Toast.makeText(this, "Failed to load room", Toast.LENGTH_SHORT).show();
-                Log.e(TAG, "Firestore room load failed", task.getException());
                 btnBookNow.setEnabled(false);
                 btnBookNow.setText("Error Loading");
                 return;
             }
 
             DocumentSnapshot doc = task.getResult();
-            Log.d(TAG, "Room document data: " + doc.getData());
-
-            // Log all fields for debugging
-            Log.d(TAG, "All document fields: " + doc.getData().keySet());
-
-            // Check specifically for postedBy field
-            if (doc.contains("postedBy")) {
-                Log.d(TAG, "postedBy field exists with value: " + doc.getString("postedBy"));
-            } else {
-                Log.e(TAG, "postedBy field MISSING from Firestore document!");
-            }
-
             Room room = doc.toObject(Room.class);
             if (room == null) {
                 Toast.makeText(this, "Room data not found", Toast.LENGTH_SHORT).show();
@@ -125,55 +208,269 @@ public class RoomDetailsActivity extends AppCompatActivity {
             }
 
             currentRoom = room;
-            isRoomLoaded = true;  // ✅ SET LOADED FLAG
+            isRoomLoaded = true;
             roomLat = room.getLatitude();
             roomLng = room.getLongitude();
 
-            tvTitle.setText(room.getTitle());
-            tvPrice.setText("$" + room.getPrice() + "/month");
-            tvAddress.setText(room.getAddress());
-            tvDescription.setText(room.getDescription());
-            tvBedrooms.setText(String.valueOf(room.getRoomsCount()));
+            displayBasicInfo(room);
+            displayOwnerInfo(room);
+            displayAmenities(room);
+            loadRoomMedia(room);
+            setupMapPreview(room);
+            updateRoomStatus(room);
+            updateBookButtonState(room);
+        });
+    }
 
-            long timestamp = room.getCreatedAt();
-            String formattedDate = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-                    .format(new Date(timestamp));
-            tvPostedDate.setText(formattedDate);
-
-            // Geocode if coordinates missing
-            if ((roomLat == 0 || roomLng == 0) && !room.getAddress().isEmpty()) {
-                geocodeAddress(room.getAddress());
+    private void displayBasicInfo(Room room) {
+        if (tvTitle != null) tvTitle.setText(getSafeString(room.getTitle()));
+        if (tvPrice != null) tvPrice.setText("$" + room.getPrice() + "/month");
+        if (tvAddress != null) tvAddress.setText(getSafeString(room.getAddress()));
+        if (tvDescription != null) tvDescription.setText(getSafeString(room.getDescription()));
+        if (tvBedrooms != null) {
+            tvBedrooms.setText(room.getRoomsCount() + " " +
+                    (room.getRoomsCount() == 1 ? "Bedroom" : "Bedrooms"));
+        }
+        if (tvBathrooms != null) {
+            tvBathrooms.setText(room.getBathroomsCount() + " " +
+                    (room.getBathroomsCount() == 1 ? "Bathroom" : "Bathrooms"));
+        }
+        if (tvArea != null) {
+            if (room.getArea() > 0) {
+                tvArea.setText(room.getArea() + " m²");
+                tvArea.setVisibility(View.VISIBLE);
+            } else {
+                tvArea.setVisibility(View.GONE);
             }
+        }
+        if (tvPostedDate != null) {
+            String date = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    .format(new Date(room.getCreatedAt()));
+            tvPostedDate.setText("Posted: " + date);
+        }
+    }
 
-            // Log room details for debugging
-            Log.d(TAG, "Room ownerId=" + room.getPostedBy() +
-                    ", phone=" + room.getContactPhone() +
-                    ", email=" + room.getContactEmail());
+    private void displayOwnerInfo(Room room) {
+        if (tvOwnerName == null) return;
 
-            // Enable book button only if owner info exists and not already requested
+        String ownerName = room.getOwnerName();
+        if (ownerName != null && !ownerName.isEmpty()) {
+            tvOwnerName.setText(ownerName);
+        } else {
             String ownerId = room.getPostedBy();
             if (ownerId != null && !ownerId.isEmpty()) {
-                if (!alreadyRequested) {
-                    btnBookNow.setEnabled(true);
-                    btnBookNow.setText("Book Now");
-                } else {
-                    btnBookNow.setEnabled(false);
-                    btnBookNow.setText("Already Requested");
-                }
+                tvOwnerName.setText("Loading...");
+                loadOwnerDetailsFromUserCollection(ownerId);
             } else {
-                btnBookNow.setEnabled(false);
-                btnBookNow.setText("Owner Info Missing");
-                Log.e(TAG, "Room owner info is missing or empty for roomId: " + roomId);
+                tvOwnerName.setText("Owner information not available");
+            }
+        }
+
+        if (tvOwnerRating != null) tvOwnerRating.setText("★ 4.8 (24 reviews)");
+        if (tvMemberSince != null) tvMemberSince.setText("Member since 2023");
+        if (ivOwnerProfile != null) {
+            ivOwnerProfile.setImageResource(R.drawable.ic_profile);
+        }
+    }
+
+    private void loadOwnerDetailsFromUserCollection(String ownerId) {
+        if (db == null) return;
+
+        db.collection("users").document(ownerId).get()
+                .addOnSuccessListener(userDoc -> {
+                    if (tvOwnerName != null) {
+                        if (userDoc.exists()) {
+                            String name = userDoc.getString("name");
+                            if (name == null || name.isEmpty()) {
+                                name = userDoc.getString("fullName");
+                            }
+                            tvOwnerName.setText(name != null && !name.isEmpty() ? name : "Owner");
+                        } else {
+                            tvOwnerName.setText("Owner");
+                        }
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    if (tvOwnerName != null) tvOwnerName.setText("Owner");
+                });
+    }
+
+    private void displayAmenities(Room room) {
+        List<String> amenities = room.getAmenities();
+
+        if (amenities != null && !amenities.isEmpty() && rvAmenities != null) {
+            amenitiesList = amenities;
+            AmenitiesAdapter adapter = new AmenitiesAdapter(amenitiesList);
+            rvAmenities.setAdapter(adapter);
+            rvAmenities.setVisibility(View.VISIBLE);
+        } else {
+            if (amenitiesCard != null) {
+                amenitiesCard.setVisibility(View.GONE);
+            }
+        }
+    }
+
+    private void loadRoomMedia(Room room) {
+        if (room.getImageCount() > 0) {
+            loadImagesFromStorage();
+        } else {
+            if (viewPagerImages != null) viewPagerImages.setVisibility(View.GONE);
+            if (imageIndicator != null) imageIndicator.setVisibility(View.GONE);
+        }
+    }
+
+    private void loadImagesFromStorage() {
+        if (storage == null || roomId == null) return;
+
+        StorageReference roomImagesRef = storage.getReference()
+                .child("rooms/" + roomId + "/images");
+
+        roomImagesRef.listAll()
+                .addOnSuccessListener(listResult -> {
+                    if (listResult.getItems().isEmpty()) {
+                        hideImageGallery();
+                        return;
+                    }
+
+                    for (StorageReference item : listResult.getItems()) {
+                        item.getDownloadUrl().addOnSuccessListener(uri -> {
+                            imageUrls.add(uri.toString());
+                            setupImagePager();
+                        }).addOnFailureListener(e -> {
+                            Log.e(TAG, "Failed to get image URL: " + e.getMessage());
+                        });
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to load images", e);
+                    hideImageGallery();
+                });
+    }
+
+    private void hideImageGallery() {
+        if (viewPagerImages != null) viewPagerImages.setVisibility(View.GONE);
+        if (imageIndicator != null) imageIndicator.setVisibility(View.GONE);
+    }
+
+    private void setupImagePager() {
+        if (imageUrls.isEmpty() || viewPagerImages == null) {
+            hideImageGallery();
+            return;
+        }
+
+        ImagePagerAdapter adapter = new ImagePagerAdapter(imageUrls);
+        viewPagerImages.setAdapter(adapter);
+        setupImageIndicator();
+    }
+
+    private void setupImageIndicator() {
+        if (imageIndicator == null || imageUrls.isEmpty()) return;
+
+        imageIndicator.removeAllViews();
+
+        for (int i = 0; i < imageUrls.size(); i++) {
+            View dot = new View(this);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    dpToPx(8), dpToPx(8)
+            );
+            params.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+            dot.setLayoutParams(params);
+            dot.setBackgroundResource(R.drawable.dot_inactive);
+            imageIndicator.addView(dot);
+        }
+
+        if (imageIndicator.getChildCount() > 0) {
+            imageIndicator.getChildAt(0).setBackgroundResource(R.drawable.dot_active);
+        }
+
+        viewPagerImages.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                for (int i = 0; i < imageIndicator.getChildCount(); i++) {
+                    View dot = imageIndicator.getChildAt(i);
+                    dot.setBackgroundResource(
+                            i == position ? R.drawable.dot_active : R.drawable.dot_inactive
+                    );
+                }
             }
         });
     }
 
+    private void setupMapPreview(Room room) {
+        if (mapPreview == null) return;
+
+        try {
+            mapPreview.setMultiTouchControls(true);
+            mapPreview.getController().setZoom(15.0);
+
+            GeoPoint roomPoint;
+            if (roomLat != 0 && roomLng != 0) {
+                roomPoint = new GeoPoint(roomLat, roomLng);
+            } else {
+                roomPoint = new GeoPoint(-6.7924, 39.2083);
+            }
+
+            mapPreview.getController().setCenter(roomPoint);
+
+            Marker roomMarker = new Marker(mapPreview);
+            roomMarker.setPosition(roomPoint);
+            roomMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
+            roomMarker.setTitle(getSafeString(room.getTitle()));
+            roomMarker.setSnippet("$" + room.getPrice() + "/month");
+            mapPreview.getOverlays().add(roomMarker);
+            mapPreview.invalidate();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Map error: " + e.getMessage());
+            if (mapPreview != null) mapPreview.setVisibility(View.GONE);
+        }
+    }
+
+    private void updateRoomStatus(Room room) {
+        if (tvRoomStatus == null) return;
+
+        if (room.isAvailable()) {
+            tvRoomStatus.setText("Available");
+            tvRoomStatus.setBackgroundResource(R.drawable.status_available_bg);
+        } else {
+            tvRoomStatus.setText("Booked");
+            tvRoomStatus.setBackgroundResource(R.drawable.status_booked_bg);
+        }
+        tvRoomStatus.setTextColor(0xFFFFFFFF);
+    }
+
+    private void updateBookButtonState(Room room) {
+        if (btnBookNow == null) return;
+
+        String ownerId = room.getPostedBy();
+        String currentUserId = FirebaseUtils.getCurrentUserId();
+
+        if (ownerId != null && ownerId.equals(currentUserId)) {
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Your Room");
+            return;
+        }
+
+        if (ownerId == null || ownerId.isEmpty()) {
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Owner Info Missing");
+            return;
+        }
+
+        if (!alreadyRequested) {
+            btnBookNow.setEnabled(true);
+            btnBookNow.setText("Book Now");
+        } else {
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Already Requested");
+        }
+    }
+
     private void checkIfAlreadyRequested() {
         String userId = FirebaseUtils.getCurrentUserId();
-        if (userId == null) return;
+        if (userId == null || db == null) return;
 
-        FirebaseFirestore.getInstance()
-                .collection("users")
+        db.collection("users")
                 .document(userId)
                 .collection("bookings")
                 .whereEqualTo("roomId", roomId)
@@ -181,172 +478,133 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 .addOnSuccessListener(query -> {
                     if (!query.isEmpty()) {
                         alreadyRequested = true;
-                        btnBookNow.setEnabled(false);
-                        btnBookNow.setText("Already Requested");
-                    } else {
-                        // If room is loaded and not requested, enable button
-                        if (isRoomLoaded && currentRoom != null) {
-                            String ownerId = currentRoom.getPostedBy();
-                            if (ownerId != null && !ownerId.isEmpty()) {
-                                btnBookNow.setEnabled(true);
-                                btnBookNow.setText("Book Now");
-                            }
+                        if (btnBookNow != null) {
+                            btnBookNow.setEnabled(false);
+                            btnBookNow.setText("Already Requested");
                         }
+                    } else if (isRoomLoaded && currentRoom != null) {
+                        updateBookButtonState(currentRoom);
                     }
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to check existing bookings", e);
                 });
     }
 
-    private void geocodeAddress(String address) {
-        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-        try {
-            List<Address> addresses = geocoder.getFromLocationName(address, 1);
-            if (addresses != null && !addresses.isEmpty()) {
-                Address location = addresses.get(0);
-                roomLat = location.getLatitude();
-                roomLng = location.getLongitude();
-                Log.d(TAG, "Geocoded address to: " + roomLat + ", " + roomLng);
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Geocoder error: " + e.getMessage());
-        }
+    private void checkIfFavorite() {
+        String userId = FirebaseUtils.getCurrentUserId();
+        if (userId == null || db == null || btnFavorite == null) return;
+
+        db.collection("users")
+                .document(userId)
+                .collection("favorites")
+                .document(roomId)
+                .get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        btnFavorite.setImageResource(R.drawable.ic_favorite_filled);
+                    } else {
+                        btnFavorite.setImageResource(R.drawable.ic_favorite_outline);
+                    }
+                });
     }
 
-    private void requestRoomBooking() {
-        // Check if room is loaded
-        if (!isRoomLoaded || currentRoom == null) {
-            Toast.makeText(this, "Loading room info, please wait...", Toast.LENGTH_SHORT).show();
-            Log.e(TAG, "Room not loaded yet when trying to book");
+    private void toggleFavorite() {
+        String userId = FirebaseUtils.getCurrentUserId();
+        if (userId == null) {
+            Toast.makeText(this, "Please login to save favorites", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Get owner ID with null safety
+        if (db == null || btnFavorite == null) return;
+
+        db.collection("users")
+                .document(userId)
+                .collection("favorites")
+                .document(roomId)
+                .get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        doc.getReference().delete()
+                                .addOnSuccessListener(aVoid -> {
+                                    btnFavorite.setImageResource(R.drawable.ic_favorite_outline);
+                                    Toast.makeText(this, "Removed from favorites", Toast.LENGTH_SHORT).show();
+                                });
+                    } else {
+                        Map<String, Object> favorite = new HashMap<>();
+                        favorite.put("roomId", roomId);
+                        favorite.put("timestamp", System.currentTimeMillis());
+                        favorite.put("title", currentRoom != null ? currentRoom.getTitle() : "");
+
+                        doc.getReference().set(favorite)
+                                .addOnSuccessListener(aVoid -> {
+                                    btnFavorite.setImageResource(R.drawable.ic_favorite_filled);
+                                    Toast.makeText(this, "Added to favorites", Toast.LENGTH_SHORT).show();
+                                });
+                    }
+                });
+    }
+
+    private void requestRoomBooking() {
+        if (!isRoomLoaded || currentRoom == null) {
+            Toast.makeText(this, "Loading room info...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String ownerId = currentRoom.getPostedBy();
         if (ownerId == null || ownerId.trim().isEmpty()) {
-            String errorMsg = "Cannot request booking: owner info missing";
-            Toast.makeText(this, errorMsg, Toast.LENGTH_SHORT).show();
-            Log.e(TAG, errorMsg + " - Room ID: " + currentRoom.getId() +
-                    ", PostedBy: '" + ownerId + "'");
-
-            // Log full room details for debugging
-            Log.e(TAG, "Full room data: " +
-                    "Title=" + currentRoom.getTitle() +
-                    ", Address=" + currentRoom.getAddress() +
-                    ", Owner=" + ownerId +
-                    ", Phone=" + currentRoom.getContactPhone() +
-                    ", Email=" + currentRoom.getContactEmail());
-
-            // Disable book button since owner info is missing
-            btnBookNow.setEnabled(false);
-            btnBookNow.setText("Owner Info Missing");
+            Toast.makeText(this, "Cannot request booking: owner info missing", Toast.LENGTH_SHORT).show();
             return;
         }
 
         String currentUserId = FirebaseUtils.getCurrentUserId();
         if (currentUserId == null) {
-            Toast.makeText(this, "You must be logged in to request a room", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Please login to request a room", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Check if user is trying to book their own room
         if (ownerId.equals(currentUserId)) {
             Toast.makeText(this, "You cannot request your own room", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Disable button during booking process
         btnBookNow.setEnabled(false);
         btnBookNow.setText("Sending Request...");
 
-        // First, fetch current user details
-        FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(currentUserId)
-                .get()
+        String ownerName = currentRoom.getOwnerName();
+        if (ownerName == null || ownerName.isEmpty()) ownerName = "Owner";
+
+        String finalOwnerName = ownerName;
+        db.collection("users").document(currentUserId).get()
                 .addOnSuccessListener(userDoc -> {
                     String userName = userDoc.getString("name");
                     if (userName == null || userName.isEmpty()) {
                         userName = userDoc.getString("fullName");
                     }
-                    if (userName == null || userName.isEmpty()) {
-                        userName = "User";
-                    }
+                    if (userName == null || userName.isEmpty()) userName = "User";
 
-                    String userPhone = userDoc.getString("phone");
-                    if (userPhone == null || userPhone.isEmpty()) {
-                        userPhone = userDoc.getString("contactPhone");
-                    }
-                    if (userPhone == null) {
-                        userPhone = "";
-                    }
-
-                    // Create booking data with all required fields
                     Map<String, Object> bookingData = new HashMap<>();
                     bookingData.put("userId", currentUserId);
                     bookingData.put("userName", userName);
-                    bookingData.put("userPhone", userPhone);
                     bookingData.put("roomId", currentRoom.getId());
                     bookingData.put("roomTitle", currentRoom.getTitle());
                     bookingData.put("ownerId", ownerId);
+                    bookingData.put("ownerName", finalOwnerName);
                     bookingData.put("timestamp", System.currentTimeMillis());
                     bookingData.put("status", "pending");
-                    bookingData.put("bookingDate", new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-                            .format(new Date()));
 
-                    Log.d(TAG, "Creating booking with data: " + bookingData);
-
-                    // Save to ROOM's bookings subcollection first
-                    String finalUserName = userName;
                     FirebaseUtils.getRoomBookingsCollection(currentRoom.getId())
                             .add(bookingData)
                             .addOnSuccessListener(docRef -> {
-                                String bookingId = docRef.getId();
-                                Log.d(TAG, "Booking saved to room with ID: " + bookingId);
-
-                                // Save to USER's bookings subcollection with same ID
-                                FirebaseFirestore.getInstance()
-                                        .collection("users")
+                                db.collection("users")
                                         .document(currentUserId)
                                         .collection("bookings")
-                                        .document(bookingId)
+                                        .document(docRef.getId())
                                         .set(bookingData)
                                         .addOnSuccessListener(aVoid -> {
-                                            Toast.makeText(this, "Booking request sent successfully", Toast.LENGTH_SHORT).show();
-                                            Log.d(TAG, "Booking saved to user with ID: " + bookingId);
-
-                                            // Send notification to owner
-                                            FirebaseUtils.sendNotificationToUser(
-                                                    ownerId,
-                                                    "New Booking Request",
-                                                    finalUserName + " wants to book " + currentRoom.getTitle(),
-                                                    bookingId
-                                            );
-
+                                            Toast.makeText(this, "Booking request sent", Toast.LENGTH_SHORT).show();
                                             alreadyRequested = true;
                                             btnBookNow.setEnabled(false);
                                             btnBookNow.setText("Already Requested");
-                                        })
-                                        .addOnFailureListener(e -> {
-                                            Log.e(TAG, "Failed to save to user bookings", e);
-                                            Toast.makeText(this, "Failed to save booking", Toast.LENGTH_SHORT).show();
-                                            btnBookNow.setEnabled(true);
-                                            btnBookNow.setText("Book Now");
                                         });
-                            })
-                            .addOnFailureListener(e -> {
-                                Toast.makeText(this, "Failed to send booking request", Toast.LENGTH_SHORT).show();
-                                Log.e(TAG, "Booking error", e);
-                                btnBookNow.setEnabled(true);
-                                btnBookNow.setText("Book Now");
                             });
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to fetch user details", e);
-                    Toast.makeText(this, "Failed to get user details", Toast.LENGTH_SHORT).show();
-                    btnBookNow.setEnabled(true);
-                    btnBookNow.setText("Book Now");
                 });
     }
 
@@ -365,68 +623,69 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
 
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
-            double originLat = 0, originLng = 0;
-            if (location != null) {
-                originLat = location.getLatitude();
-                originLng = location.getLongitude();
-            }
+            double originLat = location != null ? location.getLatitude() : 0;
+            double originLng = location != null ? location.getLongitude() : 0;
 
             String uri = "https://www.google.com/maps/dir/?api=1" +
                     "&origin=" + originLat + "," + originLng +
                     "&destination=" + roomLat + "," + roomLng +
-                    "&travelmode=walking";
+                    "&travelmode=driving";
 
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
-            intent.setPackage("com.google.android.apps.maps");
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-            } else {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
-            }
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
         });
     }
 
     private void contactRoomOwner() {
-        if (currentRoom == null) {
-            Toast.makeText(this, "Room info not available", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
+        if (currentRoom == null) return;
         String phone = currentRoom.getContactPhone();
-        String email = currentRoom.getContactEmail();
-
         if (phone != null && !phone.isEmpty()) {
-            Intent intent = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + phone));
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-            } else {
-                Toast.makeText(this, "No calling app available", Toast.LENGTH_SHORT).show();
-            }
-        } else if (email != null && !email.isEmpty()) {
-            Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + email));
-            intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + currentRoom.getTitle());
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-            } else {
-                Toast.makeText(this, "No email app available", Toast.LENGTH_SHORT).show();
-            }
+            startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone)));
         } else {
-            Toast.makeText(this, "Owner contact not available", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Owner phone number not available", Toast.LENGTH_SHORT).show();
         }
     }
 
+    private void messageRoomOwner() {
+        if (currentRoom == null) return;
+
+        String email = currentRoom.getContactEmail();
+        if (email != null && !email.isEmpty()) {
+            Intent intent = new Intent(Intent.ACTION_SENDTO);
+            intent.setData(Uri.parse("mailto:" + email));
+            intent.putExtra(Intent.EXTRA_SUBJECT, "Regarding Room: " + currentRoom.getTitle());
+            startActivity(Intent.createChooser(intent, "Send Email"));
+        } else {
+            Toast.makeText(this, "Owner email not available", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String getSafeString(String str) {
+        return str != null ? str : "";
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
     @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
+    protected void onResume() {
+        super.onResume();
+        if (mapPreview != null) mapPreview.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mapPreview != null) mapPreview.onPause();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                openDirections();
-            } else {
-                Toast.makeText(this, "Location permission required for directions", Toast.LENGTH_SHORT).show();
-            }
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            openDirections();
         }
     }
 }

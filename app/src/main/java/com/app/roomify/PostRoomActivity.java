@@ -3,6 +3,8 @@ package com.app.roomify;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Address;
+import android.location.Geocoder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -24,7 +26,16 @@ import androidx.core.content.ContextCompat;
 import androidx.documentfile.provider.DocumentFile;
 
 import com.bumptech.glide.Glide;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -36,22 +47,14 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.messaging.FirebaseMessaging;
 
-import org.osmdroid.config.Configuration;
-import org.osmdroid.events.MapEventsReceiver;
-import org.osmdroid.util.GeoPoint;
-import org.osmdroid.views.MapView;
-import org.osmdroid.views.overlay.MapEventsOverlay;
-import org.osmdroid.views.overlay.Marker;
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
-
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class PostRoomActivity extends AppCompatActivity {
+public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCallback {
 
     private static final String TAG = "PostRoomActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
@@ -61,20 +64,24 @@ public class PostRoomActivity extends AppCompatActivity {
     private static final int MAX_IMAGES = 5;
 
     // Views
-    private MapView mapViewPost;
+    private SupportMapFragment mapFragment;
+    private GoogleMap googleMap;
     private TextView tvSelectedAddress, tvImageCount, tvSelectedFiles;
     private TextInputEditText etRoomTitle, etDescription, etPrice, etRoomsCount, etBathroomsCount, etArea;
-    private TextInputEditText etRules, etContactPhone, etContactEmail;
+    private TextInputEditText etRules, etContactPhone, etContactEmail, etOwnerName;
+    private TextInputEditText etManualAddress, etLatitude, etLongitude;
     private Spinner spinnerPropertyType;
     private ChipGroup chipGroupAmenities;
-    private MaterialButton btnAddImages, btnAddVideo, btnAddContract, btnSubmitRoom;
+    private MaterialButton btnAddImages, btnAddVideo, btnAddContract, btnSubmitRoom, btnSearchAddress;
+    private MaterialButtonToggleGroup locationToggleGroup;
+    private View mapContainer, manualLocationLayout;
     private HorizontalScrollView imagePreviewScroll;
     private LinearLayout imagePreviewContainer;
     private View overlayView;
     private CircularProgressIndicator progressIndicator;
 
     // Data
-    private GeoPoint selectedLocation;
+    private LatLng selectedLatLng;
     private String selectedAddress = "";
     private List<String> selectedAmenities = new ArrayList<>();
     private List<Uri> selectedImageUris = new ArrayList<>();
@@ -82,6 +89,7 @@ public class PostRoomActivity extends AppCompatActivity {
     private Uri selectedContractUri;
     private String videoFileName = "";
     private String contractFileName = "";
+    private Marker locationMarker;
 
     // Property types
     private String[] propertyTypes = {"Apartment", "Single Room", "Studio", "House", "Shared Room", "Commercial"};
@@ -93,12 +101,8 @@ public class PostRoomActivity extends AppCompatActivity {
     // Firebase
     private FirebaseFirestore db;
     private FirebaseAuth mAuth;
-    private Marker locationMarker;
     private String currentRoomId;
-
-    // ✅ Track if user is authenticated
-    private boolean isUserAuthenticated = false;
-    private String authenticatedUserId = null;
+    private String authenticatedUserId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,11 +112,10 @@ public class PostRoomActivity extends AppCompatActivity {
         db = FirebaseFirestore.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
-        // ✅ CRITICAL: Check if user is logged in before anything else
+        // Check if user is logged in
         FirebaseUser currentUser = mAuth.getCurrentUser();
         if (currentUser == null) {
             Toast.makeText(this, "Please login to post a room", Toast.LENGTH_LONG).show();
-            // Redirect to login
             Intent intent = new Intent(this, LoginActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(intent);
@@ -120,9 +123,7 @@ public class PostRoomActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅ Store authenticated user ID
         authenticatedUserId = currentUser.getUid();
-        isUserAuthenticated = true;
         Log.d(TAG, "User authenticated with ID: " + authenticatedUserId);
 
         // Subscribe to notifications
@@ -130,145 +131,144 @@ public class PostRoomActivity extends AppCompatActivity {
                 .addOnCompleteListener(task -> {
                     if (task.isSuccessful()) {
                         Log.d("FCM", "Subscribed to rooms topic");
-                    } else {
-                        Log.e("FCM", "Failed to subscribe to topic");
                     }
                 });
 
-        // Initialize OSMDroid
-        try {
-            Configuration.getInstance().load(
-                    getApplicationContext(),
-                    getSharedPreferences("osmdroid_prefs", MODE_PRIVATE)
-            );
-        } catch (Exception e) {
-            Log.w(TAG, "OSMDroid init warning: " + e.getMessage());
-        }
-
         setContentView(R.layout.activity_post_room);
 
-        // Initialize views
         initializeViews();
-
-        // Setup map
-        setupMap();
-
-        // Setup property type spinner
         setupPropertyTypeSpinner();
-
-        // Setup amenities chips
         setupAmenitiesChips();
-
-        // Setup click listeners
         setupClickListeners();
+        setupLocationToggle();
+
+        // Initialize Google Map
+        mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.mapViewPost);
+        if (mapFragment != null) {
+            mapFragment.getMapAsync(this);
+        }
     }
 
     private void initializeViews() {
-        try {
-            mapViewPost = findViewById(R.id.mapViewPost);
-            tvSelectedAddress = findViewById(R.id.tvSelectedAddress);
-            tvImageCount = findViewById(R.id.tvImageCount);
-            tvSelectedFiles = findViewById(R.id.tvSelectedFiles);
+        mapContainer = findViewById(R.id.mapContainer);
+        manualLocationLayout = findViewById(R.id.manualLocationLayout);
+        locationToggleGroup = findViewById(R.id.locationToggleGroup);
+        tvSelectedAddress = findViewById(R.id.tvSelectedAddress);
+        tvImageCount = findViewById(R.id.tvImageCount);
+        tvSelectedFiles = findViewById(R.id.tvSelectedFiles);
 
-            etRoomTitle = findViewById(R.id.etRoomTitle);
-            etDescription = findViewById(R.id.etDescription);
-            etPrice = findViewById(R.id.etPrice);
-            etRoomsCount = findViewById(R.id.etRoomsCount);
-            etBathroomsCount = findViewById(R.id.etBathroomsCount);
-            etArea = findViewById(R.id.etArea);
-            etRules = findViewById(R.id.etRules);
-            etContactPhone = findViewById(R.id.etContactPhone);
-            etContactEmail = findViewById(R.id.etContactEmail);
+        etRoomTitle = findViewById(R.id.etRoomTitle);
+        etDescription = findViewById(R.id.etDescription);
+        etPrice = findViewById(R.id.etPrice);
+        etRoomsCount = findViewById(R.id.etRoomsCount);
+        etBathroomsCount = findViewById(R.id.etBathroomsCount);
+        etArea = findViewById(R.id.etArea);
+        etRules = findViewById(R.id.etRules);
+        etContactPhone = findViewById(R.id.etContactPhone);
+        etContactEmail = findViewById(R.id.etContactEmail);
+        etOwnerName = findViewById(R.id.etOwnerName);
+        etManualAddress = findViewById(R.id.etManualAddress);
+        etLatitude = findViewById(R.id.etLatitude);
+        etLongitude = findViewById(R.id.etLongitude);
 
-            spinnerPropertyType = findViewById(R.id.spinnerPropertyType);
-            chipGroupAmenities = findViewById(R.id.chipGroupAmenities);
+        spinnerPropertyType = findViewById(R.id.spinnerPropertyType);
+        chipGroupAmenities = findViewById(R.id.chipGroupAmenities);
 
-            btnAddImages = findViewById(R.id.btnAddImages);
-            btnAddVideo = findViewById(R.id.btnAddVideo);
-            btnAddContract = findViewById(R.id.btnAddContract);
-            btnSubmitRoom = findViewById(R.id.btnSubmitRoom);
+        btnAddImages = findViewById(R.id.btnAddImages);
+        btnAddVideo = findViewById(R.id.btnAddVideo);
+        btnAddContract = findViewById(R.id.btnAddContract);
+        btnSubmitRoom = findViewById(R.id.btnSubmitRoom);
+        btnSearchAddress = findViewById(R.id.btnSearchAddress);
 
-            imagePreviewScroll = findViewById(R.id.imagePreviewScroll);
-            imagePreviewContainer = findViewById(R.id.imagePreviewContainer);
+        imagePreviewScroll = findViewById(R.id.imagePreviewScroll);
+        imagePreviewContainer = findViewById(R.id.imagePreviewContainer);
 
-            overlayView = findViewById(R.id.overlayView);
-            progressIndicator = findViewById(R.id.progressIndicator);
-        } catch (Exception e) {
-            Log.e(TAG, "Error initializing views: " + e.getMessage());
-        }
+        overlayView = findViewById(R.id.overlayView);
+        progressIndicator = findViewById(R.id.progressIndicator);
     }
 
-    private void setupMap() {
-        if (mapViewPost == null) return;
+    private void setupLocationToggle() {
+        locationToggleGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
 
-        try {
-            mapViewPost.setMultiTouchControls(true);
-            mapViewPost.getController().setZoom(15.0);
-
-            GeoPoint defaultPoint = new GeoPoint(-6.7924, 39.2083);
-            mapViewPost.getController().setCenter(defaultPoint);
-
-            MapEventsOverlay mapEventsOverlay = new MapEventsOverlay(new MapEventsReceiver() {
-                @Override
-                public boolean singleTapConfirmedHelper(GeoPoint p) {
-                    selectLocation(p);
-                    return true;
+            if (checkedId == R.id.btnMapLocation) {
+                mapContainer.setVisibility(View.VISIBLE);
+                manualLocationLayout.setVisibility(View.GONE);
+                if (selectedLatLng != null) {
+                    updateMapLocation(selectedLatLng);
                 }
-
-                @Override
-                public boolean longPressHelper(GeoPoint p) {
-                    selectLocation(p);
-                    return true;
+            } else if (checkedId == R.id.btnManualLocation) {
+                mapContainer.setVisibility(View.GONE);
+                manualLocationLayout.setVisibility(View.VISIBLE);
+                if (!TextUtils.isEmpty(etManualAddress.getText())) {
+                    searchAddress();
                 }
-            });
-            mapViewPost.getOverlays().add(0, mapEventsOverlay);
-
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
-                MyLocationNewOverlay myLocationOverlay = new MyLocationNewOverlay(
-                        new GpsMyLocationProvider(this), mapViewPost);
-                myLocationOverlay.enableMyLocation();
-                mapViewPost.getOverlays().add(myLocationOverlay);
-            } else {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                        LOCATION_PERMISSION_REQUEST_CODE);
             }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error setting up map: " + e.getMessage());
-        }
+        });
     }
 
-    private void selectLocation(GeoPoint point) {
-        selectedLocation = point;
+    @Override
+    public void onMapReady(GoogleMap map) {
+        googleMap = map;
+        googleMap.getUiSettings().setZoomControlsEnabled(true);
+        googleMap.getUiSettings().setCompassEnabled(true);
+        googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
+        // Set default location to Dar es Salaam
+        LatLng darEsSalaam = new LatLng(-6.792354, 39.208328);
+        selectedLatLng = darEsSalaam;
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(darEsSalaam, 12f));
+
+        // Add marker for Dar es Salaam
+        addMarker(darEsSalaam, "Dar es Salaam");
+
+        // Enable location if permission granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            googleMap.setMyLocationEnabled(true);
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        }
+
+        // Set map click listener
+        googleMap.setOnMapClickListener(latLng -> {
+            selectedLatLng = latLng;
+            addMarker(latLng, "Selected Location");
+            getAddressFromLocation(latLng);
+        });
+    }
+
+    private void addMarker(LatLng latLng, String title) {
         if (locationMarker != null) {
-            mapViewPost.getOverlays().remove(locationMarker);
+            locationMarker.remove();
         }
-
-        locationMarker = new Marker(mapViewPost);
-        locationMarker.setPosition(point);
-        locationMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-        locationMarker.setTitle("Selected Location");
-        mapViewPost.getOverlays().add(locationMarker);
-        mapViewPost.invalidate();
-
-        getAddressFromLocation(point.getLatitude(), point.getLongitude());
+        locationMarker = googleMap.addMarker(new MarkerOptions()
+                .position(latLng)
+                .title(title)
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+        locationMarker.showInfoWindow();
     }
 
-    private void getAddressFromLocation(double lat, double lon) {
+    private void updateMapLocation(LatLng latLng) {
+        if (googleMap != null) {
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f));
+            addMarker(latLng, "Selected Location");
+        }
+    }
+
+    private void getAddressFromLocation(LatLng latLng) {
         tvSelectedAddress.setText("Getting address...");
 
         new Thread(() -> {
             try {
-                android.location.Geocoder geocoder = new android.location.Geocoder(
-                        PostRoomActivity.this, Locale.getDefault());
-                List<android.location.Address> addresses = geocoder.getFromLocation(lat, lon, 1);
+                Geocoder geocoder = new Geocoder(PostRoomActivity.this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1);
 
                 runOnUiThread(() -> {
                     if (addresses != null && !addresses.isEmpty()) {
-                        android.location.Address address = addresses.get(0);
+                        Address address = addresses.get(0);
                         StringBuilder sb = new StringBuilder();
                         for (int i = 0; i <= address.getMaxAddressLineIndex(); i++) {
                             sb.append(address.getAddressLine(i));
@@ -277,15 +277,57 @@ public class PostRoomActivity extends AppCompatActivity {
                         selectedAddress = sb.toString();
                         tvSelectedAddress.setText(selectedAddress);
                     } else {
-                        selectedAddress = lat + ", " + lon;
+                        selectedAddress = latLng.latitude + ", " + latLng.longitude;
                         tvSelectedAddress.setText(selectedAddress);
                     }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    selectedAddress = lat + ", " + lon;
+                    selectedAddress = latLng.latitude + ", " + latLng.longitude;
                     tvSelectedAddress.setText(selectedAddress);
                 });
+            }
+        }).start();
+    }
+
+    private void searchAddress() {
+        String address = etManualAddress.getText().toString().trim();
+        if (TextUtils.isEmpty(address)) {
+            etManualAddress.setError("Please enter an address");
+            return;
+        }
+
+        showLoading(true);
+        new Thread(() -> {
+            try {
+                Geocoder geocoder = new Geocoder(PostRoomActivity.this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocationName(address, 1);
+
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address addr = addresses.get(0);
+                        double lat = addr.getLatitude();
+                        double lng = addr.getLongitude();
+
+                        selectedLatLng = new LatLng(lat, lng);
+                        selectedAddress = address;
+
+                        etLatitude.setText(String.valueOf(lat));
+                        etLongitude.setText(String.valueOf(lng));
+                        tvSelectedAddress.setText(address);
+
+                        Toast.makeText(this, "Location found!", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Address not found", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    Toast.makeText(this, "Error searching address", Toast.LENGTH_SHORT).show();
+                });
+                Log.e(TAG, "Geocoder error: " + e.getMessage());
             }
         }).start();
     }
@@ -298,44 +340,33 @@ public class PostRoomActivity extends AppCompatActivity {
     }
 
     private void setupAmenitiesChips() {
-        try {
-            chipGroupAmenities.removeAllViews();
+        chipGroupAmenities.removeAllViews();
 
-            for (String amenity : amenitiesList) {
-                Chip chip = new Chip(this);
-                chip.setText(amenity);
-                chip.setCheckable(true);
-                chip.setCheckedIconVisible(true);
-                chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
-                        ContextCompat.getColor(this, android.R.color.holo_blue_dark)));
-                chip.setTextColor(ContextCompat.getColor(this, android.R.color.white));
+        for (String amenity : amenitiesList) {
+            Chip chip = new Chip(this);
+            chip.setText(amenity);
+            chip.setCheckable(true);
+            chip.setCheckedIconVisible(true);
+            chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(this, android.R.color.holo_blue_dark)));
+            chip.setTextColor(ContextCompat.getColor(this, android.R.color.white));
 
-                chip.setPadding(16, 8, 16, 8);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                params.setMargins(8, 8, 8, 8);
-                chip.setLayoutParams(params);
-
-                final String currentAmenity = amenity;
-                chip.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    if (isChecked) {
-                        if (!selectedAmenities.contains(currentAmenity)) {
-                            selectedAmenities.add(currentAmenity);
-                        }
-                        chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
-                                ContextCompat.getColor(this, android.R.color.holo_orange_dark)));
-                    } else {
-                        selectedAmenities.remove(currentAmenity);
-                        chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
-                                ContextCompat.getColor(this, android.R.color.holo_blue_dark)));
+            final String currentAmenity = amenity;
+            chip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isChecked) {
+                    if (!selectedAmenities.contains(currentAmenity)) {
+                        selectedAmenities.add(currentAmenity);
                     }
-                });
+                    chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
+                            ContextCompat.getColor(this, android.R.color.holo_orange_dark)));
+                } else {
+                    selectedAmenities.remove(currentAmenity);
+                    chip.setChipBackgroundColor(android.content.res.ColorStateList.valueOf(
+                            ContextCompat.getColor(this, android.R.color.holo_blue_dark)));
+                }
+            });
 
-                chipGroupAmenities.addView(chip);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error setting up amenities chips: " + e.getMessage());
+            chipGroupAmenities.addView(chip);
         }
     }
 
@@ -344,6 +375,7 @@ public class PostRoomActivity extends AppCompatActivity {
         btnAddVideo.setOnClickListener(v -> pickVideo());
         btnAddContract.setOnClickListener(v -> pickContract());
         btnSubmitRoom.setOnClickListener(v -> validateAndSubmit());
+        btnSearchAddress.setOnClickListener(v -> searchAddress());
     }
 
     private void pickImages() {
@@ -413,44 +445,34 @@ public class PostRoomActivity extends AppCompatActivity {
     private void handleImageSelection(Intent data) {
         selectedImageUris.clear();
 
-        try {
-            if (data.getClipData() != null) {
-                int count = Math.min(data.getClipData().getItemCount(), MAX_IMAGES);
-                for (int i = 0; i < count; i++) {
-                    Uri uri = data.getClipData().getItemAt(i).getUri();
-                    selectedImageUris.add(uri);
-                }
-            } else if (data.getData() != null) {
-                selectedImageUris.add(data.getData());
+        if (data.getClipData() != null) {
+            int count = Math.min(data.getClipData().getItemCount(), MAX_IMAGES);
+            for (int i = 0; i < count; i++) {
+                Uri uri = data.getClipData().getItemAt(i).getUri();
+                selectedImageUris.add(uri);
             }
-
-            tvImageCount.setText(selectedImageUris.size() + " / " + MAX_IMAGES + " photos");
-
-            if (!selectedImageUris.isEmpty()) {
-                imagePreviewScroll.setVisibility(View.VISIBLE);
-                imagePreviewContainer.removeAllViews();
-
-                for (Uri imageUri : selectedImageUris) {
-                    ImageView imageView = new ImageView(this);
-                    imageView.setLayoutParams(new LinearLayout.LayoutParams(200, 200));
-                    imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    imageView.setPadding(4, 4, 4, 4);
-
-                    try {
-                        Glide.with(this).load(imageUri).override(200, 200).centerCrop().into(imageView);
-                    } catch (Exception e) {
-                        imageView.setImageResource(android.R.drawable.ic_menu_gallery);
-                    }
-
-                    imagePreviewContainer.addView(imageView);
-                }
-            }
-
-            updateSelectedFilesInfo();
-        } catch (Exception e) {
-            Log.e(TAG, "Error handling image selection: " + e.getMessage());
-            showError("Error loading images");
+        } else if (data.getData() != null) {
+            selectedImageUris.add(data.getData());
         }
+
+        tvImageCount.setText(selectedImageUris.size() + " / " + MAX_IMAGES + " photos");
+
+        if (!selectedImageUris.isEmpty()) {
+            imagePreviewScroll.setVisibility(View.VISIBLE);
+            imagePreviewContainer.removeAllViews();
+
+            for (Uri imageUri : selectedImageUris) {
+                ImageView imageView = new ImageView(this);
+                imageView.setLayoutParams(new LinearLayout.LayoutParams(200, 200));
+                imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                imageView.setPadding(4, 4, 4, 4);
+
+                Glide.with(this).load(imageUri).override(200, 200).centerCrop().into(imageView);
+                imagePreviewContainer.addView(imageView);
+            }
+        }
+
+        updateSelectedFilesInfo();
     }
 
     private void updateSelectedFilesInfo() {
@@ -459,12 +481,10 @@ public class PostRoomActivity extends AppCompatActivity {
         if (!selectedImageUris.isEmpty()) {
             info.append(selectedImageUris.size()).append(" photo(s)");
         }
-
         if (selectedVideoUri != null) {
             if (info.length() > 0) info.append(", ");
             info.append("1 video");
         }
-
         if (selectedContractUri != null) {
             if (info.length() > 0) info.append(", ");
             info.append("1 contract");
@@ -479,152 +499,128 @@ public class PostRoomActivity extends AppCompatActivity {
     }
 
     private void validateAndSubmit() {
-        try {
-            // ✅ CRITICAL: Verify user is still authenticated
-            FirebaseUser currentUser = mAuth.getCurrentUser();
-            if (currentUser == null) {
-                Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
-                Intent intent = new Intent(this, LoginActivity.class);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                startActivity(intent);
-                finish();
-                return;
-            }
+        // Verify user is still authenticated
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) {
+            Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
 
-            // ✅ Update authenticated user ID in case it changed
-            authenticatedUserId = currentUser.getUid();
-            Log.d(TAG, "Posting room as user: " + authenticatedUserId);
+        authenticatedUserId = currentUser.getUid();
 
-            // Validate required fields
-            String title = etRoomTitle.getText().toString().trim();
-            String description = etDescription.getText().toString().trim();
-            String priceStr = etPrice.getText().toString().trim();
-            String phone = etContactPhone.getText().toString().trim();
-            String roomsCountStr = etRoomsCount.getText().toString().trim();
-            String bathroomsCountStr = etBathroomsCount.getText().toString().trim();
+        // Validate required fields
+        String title = etRoomTitle.getText().toString().trim();
+        String description = etDescription.getText().toString().trim();
+        String priceStr = etPrice.getText().toString().trim();
+        String phone = etContactPhone.getText().toString().trim();
+        String ownerName = etOwnerName.getText().toString().trim();
 
-            if (TextUtils.isEmpty(title)) {
-                etRoomTitle.setError("Title is required");
-                etRoomTitle.requestFocus();
-                return;
-            }
+        if (TextUtils.isEmpty(title)) {
+            etRoomTitle.setError("Title is required");
+            etRoomTitle.requestFocus();
+            return;
+        }
 
-            if (TextUtils.isEmpty(description)) {
-                etDescription.setError("Description is required");
-                etDescription.requestFocus();
-                return;
-            }
+        if (TextUtils.isEmpty(description)) {
+            etDescription.setError("Description is required");
+            etDescription.requestFocus();
+            return;
+        }
 
-            if (TextUtils.isEmpty(priceStr)) {
-                etPrice.setError("Price is required");
-                etPrice.requestFocus();
-                return;
-            }
+        if (TextUtils.isEmpty(priceStr)) {
+            etPrice.setError("Price is required");
+            etPrice.requestFocus();
+            return;
+        }
 
-            double price = Double.parseDouble(priceStr);
+        if (TextUtils.isEmpty(phone)) {
+            etContactPhone.setError("Contact phone is required");
+            etContactPhone.requestFocus();
+            return;
+        }
 
-            if (TextUtils.isEmpty(phone)) {
-                etContactPhone.setError("Contact phone is required");
-                etContactPhone.requestFocus();
-                return;
-            }
+        if (TextUtils.isEmpty(ownerName)) {
+            etOwnerName.setError("Owner name is required");
+            etOwnerName.requestFocus();
+            return;
+        }
 
-            if (selectedLocation == null) {
+        // Get location based on selected mode
+        if (locationToggleGroup.getCheckedButtonId() == R.id.btnMapLocation) {
+            if (selectedLatLng == null) {
                 showError("Please select a location on the map");
                 return;
             }
+        } else {
+            // Manual mode - get coordinates from inputs
+            String latStr = etLatitude.getText().toString().trim();
+            String lngStr = etLongitude.getText().toString().trim();
 
-            if (selectedImageUris.isEmpty()) {
-                showError("Please select at least one photo");
+            if (TextUtils.isEmpty(latStr) || TextUtils.isEmpty(lngStr)) {
+                showError("Please enter valid latitude and longitude coordinates");
                 return;
             }
 
-            // Parse counts with defaults
-            int roomsCount = 1;
-            if (!TextUtils.isEmpty(roomsCountStr)) {
-                roomsCount = Integer.parseInt(roomsCountStr);
+            try {
+                double lat = Double.parseDouble(latStr);
+                double lng = Double.parseDouble(lngStr);
+                selectedLatLng = new LatLng(lat, lng);
+
+                // If address is empty, try to get it from coordinates
+                if (TextUtils.isEmpty(selectedAddress)) {
+                    getAddressFromLocation(selectedLatLng);
+                }
+            } catch (NumberFormatException e) {
+                showError("Invalid coordinates format");
+                return;
             }
-
-            int bathroomsCount = 1;
-            if (!TextUtils.isEmpty(bathroomsCountStr)) {
-                bathroomsCount = Integer.parseInt(bathroomsCountStr);
-            }
-
-            String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
-            String email = etContactEmail.getText().toString().trim();
-
-            showLoading(true);
-            saveRoomToFirestore(title, description, price, propertyType, phone, email,
-                    roomsCount, bathroomsCount);
-
-        } catch (NumberFormatException e) {
-            showError("Please enter valid numbers for price, rooms, and bathrooms");
-            Log.e(TAG, "Number format error: " + e.getMessage());
-            showLoading(false);
-        } catch (Exception e) {
-            Log.e(TAG, "Error in validateAndSubmit: " + e.getMessage(), e);
-            showError("Error: " + e.getMessage());
-            showLoading(false);
         }
+
+        if (selectedImageUris.isEmpty()) {
+            showError("Please select at least one photo");
+            return;
+        }
+
+        double price = Double.parseDouble(priceStr);
+        int roomsCount = 1;
+        if (!TextUtils.isEmpty(etRoomsCount.getText().toString())) {
+            roomsCount = Integer.parseInt(etRoomsCount.getText().toString());
+        }
+
+        int bathroomsCount = 1;
+        if (!TextUtils.isEmpty(etBathroomsCount.getText().toString())) {
+            bathroomsCount = Integer.parseInt(etBathroomsCount.getText().toString());
+        }
+
+        String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
+        String email = etContactEmail.getText().toString().trim();
+
+        showLoading(true);
+        saveRoomToFirestore(title, description, price, propertyType, phone, email,
+                roomsCount, bathroomsCount, ownerName);
     }
 
     private void saveRoomToFirestore(String title, String description, double price,
                                      String propertyType, String phone, String email,
-                                     int roomsCount, int bathroomsCount) {
-
-        // ✅ Double-check location
-        if (selectedLocation == null) {
-            showError("Please select location on map");
-            showLoading(false);
-            return;
-        }
-
-        // ✅ Double-check user authentication
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser == null) {
-            showError("You must be logged in to post a room");
-            showLoading(false);
-            return;
-        }
-
-        // ✅ Get the REAL user ID - NEVER use "anonymous"
-        String currentUserId = currentUser.getUid();
-
-        // ✅ Validate user ID is not empty or anonymous
-        if (currentUserId == null || currentUserId.isEmpty()) {
-            showError("Authentication error. Please login again.");
-            showLoading(false);
-            return;
-        }
-
-        // ✅ CRITICAL: Ensure we never use "anonymous"
-        if ("anonymous".equals(currentUserId)) {
-            showError("Invalid user session. Please login with a valid account.");
-            showLoading(false);
-            return;
-        }
-
-        // Generate room ID
+                                     int roomsCount, int bathroomsCount, String ownerName) {
         currentRoomId = db.collection("rooms").document().getId();
 
-        Log.d(TAG, "=== CREATING NEW ROOM ===");
-        Log.d(TAG, "Room ID: " + currentRoomId);
-        Log.d(TAG, "Posted by (Owner ID): " + currentUserId);
-        Log.d(TAG, "Title: " + title);
-        Log.d(TAG, "Price: $" + price);
-
-        // Create room data with ALL required fields
         Map<String, Object> room = new HashMap<>();
         room.put("id", currentRoomId);
         room.put("title", title);
         room.put("description", description);
         room.put("price", price);
-        room.put("latitude", selectedLocation.getLatitude());
-        room.put("longitude", selectedLocation.getLongitude());
+        room.put("latitude", selectedLatLng.latitude);
+        room.put("longitude", selectedLatLng.longitude);
         room.put("address", selectedAddress);
         room.put("propertyType", propertyType);
         room.put("contactPhone", phone);
         room.put("contactEmail", email.isEmpty() ? "" : email);
+        room.put("ownerName", ownerName);
         room.put("amenities", selectedAmenities);
         room.put("imageCount", selectedImageUris.size());
         room.put("hasVideo", selectedVideoUri != null);
@@ -633,65 +629,37 @@ public class PostRoomActivity extends AppCompatActivity {
         room.put("isAvailable", true);
         room.put("roomsCount", roomsCount);
         room.put("bathroomsCount", bathroomsCount);
-        room.put("postedBy", currentUserId); // ✅ CRITICAL: This MUST be the real user ID
+        room.put("postedBy", authenticatedUserId);
         room.put("status", "active");
 
-        // ✅ Log the postedBy field to verify
-        Log.d(TAG, "Room data - postedBy: " + room.get("postedBy"));
-        Log.d(TAG, "Room data - owner ID type: " + room.get("postedBy").getClass().getSimpleName());
+        // Optional fields
+        if (!TextUtils.isEmpty(etArea.getText().toString())) {
+            room.put("area", Double.parseDouble(etArea.getText().toString()));
+        }
+        if (!TextUtils.isEmpty(etRules.getText().toString())) {
+            room.put("rules", etRules.getText().toString().trim());
+        }
 
-        // Save to Firestore
         db.collection("rooms").document(currentRoomId)
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ Room saved successfully with ID: " + currentRoomId);
-
-                    // ✅ Verify the document was saved correctly
-                    db.collection("rooms").document(currentRoomId).get()
-                            .addOnSuccessListener(doc -> {
-                                if (doc.exists()) {
-                                    String savedPostedBy = doc.getString("postedBy");
-                                    Log.d(TAG, "✅ VERIFICATION: postedBy field saved as: '" + savedPostedBy + "'");
-
-                                    if (savedPostedBy == null || savedPostedBy.isEmpty()) {
-                                        Log.e(TAG, "❌ CRITICAL ERROR: postedBy field was not saved!");
-                                        showError("Error saving owner information. Please try again.");
-                                    } else if ("anonymous".equals(savedPostedBy)) {
-                                        Log.e(TAG, "❌ CRITICAL ERROR: postedBy is still 'anonymous'!");
-                                        showError("Authentication error. Please login again.");
-                                    } else {
-                                        Log.d(TAG, "✅ Room posted successfully with owner ID: " + savedPostedBy);
-                                        showSuccess();
-                                    }
-                                } else {
-                                    Log.e(TAG, "❌ Document not found after save!");
-                                    showError("Error saving room. Please try again.");
-                                }
-                            })
-                            .addOnFailureListener(e -> {
-                                Log.e(TAG, "❌ Failed to verify saved document", e);
-                                showSuccess(); // Still show success but log error
-                            });
-
-                    // Send notifications
+                    Log.d(TAG, "Room saved successfully with ID: " + currentRoomId);
                     sendNewRoomNotification();
-                    notifyBackendForNewRoom();
-
-                    showLoading(false);
+                    showSuccess();
                 })
                 .addOnFailureListener(e -> {
                     showLoading(false);
                     showError("Failed to post: " + e.getMessage());
-                    Log.e(TAG, "❌ Firestore error: " + e.getMessage(), e);
+                    Log.e(TAG, "Firestore error: " + e.getMessage(), e);
                 });
     }
 
     private void showSuccess() {
         runOnUiThread(() -> {
+            showLoading(false);
             new MaterialAlertDialogBuilder(this)
                     .setTitle("Success!")
-                    .setMessage("Your property has been posted successfully!\n\n" +
-                            "Note: Images will be added in a future update.")
+                    .setMessage("Your property has been posted successfully!")
                     .setPositiveButton("OK", (dialog, which) -> {
                         Intent intent = new Intent();
                         intent.putExtra("room_posted", true);
@@ -705,17 +673,14 @@ public class PostRoomActivity extends AppCompatActivity {
     }
 
     private void sendNewRoomNotification() {
-        String url = "https://fcm.googleapis.com/fcm/send";
-
         new Thread(() -> {
             try {
                 okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-
                 org.json.JSONObject json = new org.json.JSONObject();
                 json.put("to", "/topics/rooms");
 
                 org.json.JSONObject notification = new org.json.JSONObject();
-                notification.put("title", "New Room Available 🏠");
+                notification.put("title", "New Room Available ");
                 notification.put("body", "Check out the latest room posted!");
 
                 json.put("notification", notification);
@@ -726,95 +691,33 @@ public class PostRoomActivity extends AppCompatActivity {
                 );
 
                 okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url(url)
+                        .url("https://fcm.googleapis.com/fcm/send")
                         .post(body)
                         .addHeader("Authorization", "key=YOUR_SERVER_KEY")
                         .build();
 
                 client.newCall(request).execute();
-
             } catch (Exception e) {
                 Log.e("FCM", "Error sending notification: " + e.getMessage());
             }
         }).start();
     }
 
-    private void notifyBackendForNewRoom() {
-        if (currentRoomId == null || currentRoomId.isEmpty()) {
-            Log.e("BackendNotify", "Cannot notify: roomId is null");
-            return;
-        }
-
-        new Thread(() -> {
-            try {
-                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-
-                okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url("http://10.0.2.2:8080/notify-new-room?roomId=" + currentRoomId)
-                        .post(okhttp3.RequestBody.create(new byte[0]))
-                        .build();
-
-                okhttp3.Response response = client.newCall(request).execute();
-                Log.d("BackendNotify", "Response: " + response.body().string());
-
-            } catch (Exception e) {
-                Log.e("BackendNotify", "Error notifying backend: " + e.getMessage());
-            }
-        }).start();
-    }
-
     private void showLoading(boolean show) {
         runOnUiThread(() -> {
-            try {
-                if (overlayView != null) {
-                    overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
-                }
-                if (progressIndicator != null) {
-                    progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
-                }
-                if (btnSubmitRoom != null) {
-                    btnSubmitRoom.setEnabled(!show);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error updating loading UI: " + e.getMessage());
-            }
+            overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
+            progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
+            btnSubmitRoom.setEnabled(!show);
         });
     }
 
     private void showError(String message) {
         runOnUiThread(() -> {
-            try {
-                if (mapViewPost != null) {
-                    Snackbar.make(mapViewPost, message, Snackbar.LENGTH_LONG)
-                            .setBackgroundTint(ContextCompat.getColor(this, android.R.color.holo_red_dark))
-                            .setTextColor(ContextCompat.getColor(this, android.R.color.white))
-                            .show();
-                } else {
-                    Toast.makeText(PostRoomActivity.this, message, Toast.LENGTH_LONG).show();
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error showing error: " + e.getMessage());
-            }
+            Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG)
+                    .setBackgroundTint(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                    .setTextColor(ContextCompat.getColor(this, android.R.color.white))
+                    .show();
         });
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (mapViewPost != null) mapViewPost.onResume();
-
-        // ✅ Re-check authentication when activity resumes
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser == null) {
-            Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
-            finish();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (mapViewPost != null) mapViewPost.onPause();
     }
 
     @Override
@@ -822,8 +725,28 @@ public class PostRoomActivity extends AppCompatActivity {
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE && grantResults.length > 0 &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            setupMap();
+                grantResults[0] == PackageManager.PERMISSION_GRANTED && googleMap != null) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                googleMap.setMyLocationEnabled(true);
+            }
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (googleMap != null && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            googleMap.setMyLocationEnabled(true);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (googleMap != null) {
+            googleMap.setMyLocationEnabled(false);
         }
     }
 }

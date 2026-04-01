@@ -420,7 +420,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.d(TAG, "✅ Room booking status updated to approved");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update room booking", e);
+                    Log.e(TAG, "Failed to update room booking", e);
                 });
 
         // Update in USER bookings collection
@@ -440,7 +440,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                             "Your booking for " + request.getRoomTitle() + " has been approved!");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update user booking", e);
+                    Log.e(TAG, "Failed to update user booking", e);
                     Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
@@ -462,7 +462,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.d(TAG, "✅ Room booking status updated to rejected");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update room booking", e);
+                    Log.e(TAG, " Failed to update room booking", e);
                 });
 
         // Update in USER bookings collection
@@ -482,7 +482,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                             "Your booking for " + request.getRoomTitle() + " has been rejected.");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update user booking", e);
+                    Log.e(TAG, "Failed to update user booking", e);
                     Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
@@ -504,7 +504,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.d(TAG, "✅ Room booking status updated to cancelled");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update room booking", e);
+                    Log.e(TAG, "Failed to update room booking", e);
                 });
 
         // Update in USER bookings collection
@@ -519,7 +519,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     adapter.removeRequest(request);
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to update user booking", e);
+                    Log.e(TAG, " Failed to update user booking", e);
                     Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
@@ -541,7 +541,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     Log.d(TAG, "✅ Room booking deleted");
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to delete room booking", e);
+                    Log.e(TAG, "Failed to delete room booking", e);
                 });
 
         // Delete from USER bookings collection
@@ -556,7 +556,7 @@ public class BookingRequestsActivity extends AppCompatActivity {
                     adapter.removeRequest(request);
                 })
                 .addOnFailureListener(e -> {
-                    Log.e(TAG, "❌ Failed to delete user booking", e);
+                    Log.e(TAG, "Failed to delete user booking", e);
                     Toast.makeText(this, "Error deleting user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }

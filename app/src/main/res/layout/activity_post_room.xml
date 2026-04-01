@@ -29,14 +29,14 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/list_your_property"
+                android:text="List Your Property"
                 android:textSize="28sp"
                 android:textStyle="bold"
                 android:textColor="@color/black" />
 
         </LinearLayout>
 
-        <!-- Location Card -->
+        <!-- Owner Information Card (NEW) -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -53,37 +53,189 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/property_location"
+                    android:text="Owner Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="16dp" />
 
-                <!-- Map -->
-                <org.osmdroid.views.MapView
-                    android:id="@+id/mapViewPost"
+                <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_height="wrap_content"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    app:boxStrokeColor="@color/primary"
+                    app:hintTextColor="@color/primary">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etOwnerName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Owner Full Name"
+                        android:inputType="textPersonName"
+                        android:maxLines="1" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Location Card with Dual Input (Map + Manual Entry) -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/tap_on_map_to_set_location"
-                    android:textSize="12sp"
-                    android:textColor="@color/grey"
-                    android:layout_marginBottom="4dp" />
+                    android:text="Property Location"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/black"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Location Toggle Buttons -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/locationToggleGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    app:singleSelection="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMapLocation"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="Map Location"
+                        android:checked="true" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnManualLocation"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="Enter Manually" />
+
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <!-- Map Container -->
+                <FrameLayout
+                    android:id="@+id/mapContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="visible">
+
+                    <fragment
+                        android:id="@+id/mapViewPost"
+                        android:name="com.google.android.gms.maps.SupportMapFragment"
+                        android:layout_width="match_parent"
+                        android:layout_height="220dp"
+                        android:layout_marginBottom="8dp" />
+
+                </FrameLayout>
+
+                <!-- Manual Location Entry -->
+                <LinearLayout
+                    android:id="@+id/manualLocationLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="12dp"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                        app:boxStrokeColor="@color/primary"
+                        app:hintTextColor="@color/primary">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etManualAddress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="Street Address"
+                            android:inputType="textPostalAddress"
+                            android:maxLines="2" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            app:boxStrokeColor="@color/primary"
+                            app:hintTextColor="@color/primary">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/etLatitude"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="Latitude"
+                                android:inputType="numberDecimal" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            app:boxStrokeColor="@color/primary"
+                            app:hintTextColor="@color/primary">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/etLongitude"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="Longitude"
+                                android:inputType="numberDecimal" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSearchAddress"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="8dp"
+                        android:text="Search Address"
+                        app:icon="@drawable/ic_search"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvSelectedAddress"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/no_location_selected"
+                    android:text="No location selected"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="@color/primary"
                     android:maxLines="2"
-                    android:ellipsize="end" />
+                    android:ellipsize="end"
+                    android:layout_marginTop="8dp" />
 
             </LinearLayout>
 
@@ -106,7 +258,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/basic_information"
+                    android:text="Basic Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"
@@ -125,7 +277,7 @@
                         android:id="@+id/etRoomTitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/property_title"
+                        android:hint="Property Title *"
                         android:maxLines="1" />
 
                 </com.google.android.material.textfield.TextInputLayout>
@@ -143,7 +295,7 @@
                         android:id="@+id/etDescription"
                         android:layout_width="match_parent"
                         android:layout_height="100dp"
-                        android:hint="@string/description1"
+                        android:hint="Description *"
                         android:gravity="top"
                         android:inputType="textMultiLine" />
 
@@ -170,7 +322,7 @@
                             android:id="@+id/etPrice"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="@string/price"
+                            android:hint="Price *"
                             android:inputType="numberDecimal" />
 
                     </com.google.android.material.textfield.TextInputLayout>
@@ -184,7 +336,7 @@
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/property_type"
+                            android:text="Property Type"
                             android:textSize="12sp"
                             android:textColor="@color/grey"
                             android:layout_marginBottom="4dp" />
@@ -221,8 +373,9 @@
                             android:id="@+id/etRoomsCount"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="@string/rooms1"
-                            android:inputType="number" />
+                            android:hint="Rooms"
+                            android:inputType="number"
+                            android:text="1" />
 
                     </com.google.android.material.textfield.TextInputLayout>
 
@@ -240,8 +393,9 @@
                             android:id="@+id/etBathroomsCount"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="@string/bathrooms"
-                            android:inputType="number" />
+                            android:hint="Bathrooms"
+                            android:inputType="number"
+                            android:text="1" />
 
                     </com.google.android.material.textfield.TextInputLayout>
 
@@ -258,7 +412,7 @@
                             android:id="@+id/etArea"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="@string/area"
+                            android:hint="Area"
                             android:inputType="numberDecimal" />
 
                     </com.google.android.material.textfield.TextInputLayout>
@@ -286,7 +440,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/amenities"
+                    android:text="Amenities"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"
@@ -322,7 +476,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/rules_contact"
+                    android:text="Rules and Contact"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"
@@ -341,7 +495,7 @@
                         android:id="@+id/etRules"
                         android:layout_width="match_parent"
                         android:layout_height="80dp"
-                        android:hint="@string/house_rules_optional"
+                        android:hint="House Rules (Optional)"
                         android:gravity="top"
                         android:inputType="textMultiLine" />
 
@@ -361,7 +515,7 @@
                         android:id="@+id/etContactPhone"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/phone_number"
+                        android:hint="Phone Number *"
                         android:inputType="phone" />
 
                 </com.google.android.material.textfield.TextInputLayout>
@@ -378,7 +532,7 @@
                         android:id="@+id/etContactEmail"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/email_address_optional"
+                        android:hint="Email Address (Optional)"
                         android:inputType="textEmailAddress" />
 
                 </com.google.android.material.textfield.TextInputLayout>
@@ -387,7 +541,7 @@
 
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Media Card (Consolidated) -->
+        <!-- Media Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -404,7 +558,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/media"
+                    android:text="Media"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/black"
@@ -422,7 +576,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="48dp"
-                        android:text="@string/add_photos"
+                        android:text="Add Photos"
                         app:icon="@drawable/ic_profile"
                         app:iconGravity="textStart"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -433,7 +587,7 @@
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_vertical"
                         android:layout_marginStart="12dp"
-                        android:text="@string/_0_photos"
+                        android:text="0/5 photos"
                         android:textColor="@color/grey"
                         android:textSize="14sp" />
 
@@ -455,7 +609,7 @@
 
                 </HorizontalScrollView>
 
-                <!-- Video & Contract Row (Combined) -->
+                <!-- Video & Contract Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -467,7 +621,7 @@
                         android:layout_weight="1"
                         android:layout_height="48dp"
                         android:layout_marginEnd="8dp"
-                        android:text="@string/video"
+                        android:text="Video"
                         app:icon="@drawable/ic_add"
                         app:iconGravity="textStart"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -477,7 +631,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="48dp"
-                        android:text="@string/contract"
+                        android:text="Contract"
                         app:icon="@drawable/ic_call"
                         app:iconGravity="textStart"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -490,7 +644,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="@string/no_files_selected"
+                    android:text="No files selected"
                     android:textSize="12sp"
                     android:textColor="@color/grey"
                     android:visibility="gone" />
@@ -504,7 +658,7 @@
             android:id="@+id/btnSubmitRoom"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:text="@string/post_property"
+            android:text="Post Property"
             android:textSize="16sp"
             android:textStyle="bold"
             app:icon="@drawable/ic_addd"
