@@ -188,77 +188,96 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void setupLocationToggle() {
-        locationToggleGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
-            if (!isChecked) return;
+        if (locationToggleGroup != null) {
+            locationToggleGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+                if (!isChecked) return;
 
-            if (checkedId == R.id.btnMapLocation) {
-                mapContainer.setVisibility(View.VISIBLE);
-                manualLocationLayout.setVisibility(View.GONE);
-                if (selectedLatLng != null) {
-                    updateMapLocation(selectedLatLng);
+                if (checkedId == R.id.btnMapLocation) {
+                    mapContainer.setVisibility(View.VISIBLE);
+                    manualLocationLayout.setVisibility(View.GONE);
+                    if (selectedLatLng != null && googleMap != null) {
+                        updateMapLocation(selectedLatLng);
+                    }
+                } else if (checkedId == R.id.btnManualLocation) {
+                    mapContainer.setVisibility(View.GONE);
+                    manualLocationLayout.setVisibility(View.VISIBLE);
                 }
-            } else if (checkedId == R.id.btnManualLocation) {
-                mapContainer.setVisibility(View.GONE);
-                manualLocationLayout.setVisibility(View.VISIBLE);
-                if (!TextUtils.isEmpty(etManualAddress.getText())) {
-                    searchAddress();
-                }
-            }
-        });
+            });
+        }
     }
 
     @Override
     public void onMapReady(GoogleMap map) {
         googleMap = map;
-        googleMap.getUiSettings().setZoomControlsEnabled(true);
-        googleMap.getUiSettings().setCompassEnabled(true);
-        googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
-        // Set default location to Dar es Salaam
-        LatLng darEsSalaam = new LatLng(-6.792354, 39.208328);
-        selectedLatLng = darEsSalaam;
-        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(darEsSalaam, 12f));
+        try {
+            googleMap.getUiSettings().setZoomControlsEnabled(true);
+            googleMap.getUiSettings().setCompassEnabled(true);
+            googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
-        // Add marker for Dar es Salaam
-        addMarker(darEsSalaam, "Dar es Salaam");
+            // Set default location to Dar es Salaam
+            LatLng darEsSalaam = new LatLng(-6.792354, 39.208328);
+            selectedLatLng = darEsSalaam;
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(darEsSalaam, 12f));
 
-        // Enable location if permission granted
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            googleMap.setMyLocationEnabled(true);
-        } else {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    LOCATION_PERMISSION_REQUEST_CODE);
+            // Add marker for Dar es Salaam
+            addMarker(darEsSalaam, "Dar es Salaam");
+
+            // Enable location if permission granted
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                googleMap.setMyLocationEnabled(true);
+            } else {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                        LOCATION_PERMISSION_REQUEST_CODE);
+            }
+
+            // Set map click listener
+            googleMap.setOnMapClickListener(latLng -> {
+                selectedLatLng = latLng;
+                addMarker(latLng, "Selected Location");
+                getAddressFromLocation(latLng);
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up map: " + e.getMessage());
         }
-
-        // Set map click listener
-        googleMap.setOnMapClickListener(latLng -> {
-            selectedLatLng = latLng;
-            addMarker(latLng, "Selected Location");
-            getAddressFromLocation(latLng);
-        });
     }
 
     private void addMarker(LatLng latLng, String title) {
-        if (locationMarker != null) {
-            locationMarker.remove();
+        if (googleMap == null) return;
+
+        try {
+            if (locationMarker != null) {
+                locationMarker.remove();
+            }
+            locationMarker = googleMap.addMarker(new MarkerOptions()
+                    .position(latLng)
+                    .title(title)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+            if (locationMarker != null) {
+                locationMarker.showInfoWindow();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding marker: " + e.getMessage());
         }
-        locationMarker = googleMap.addMarker(new MarkerOptions()
-                .position(latLng)
-                .title(title)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
-        locationMarker.showInfoWindow();
     }
 
     private void updateMapLocation(LatLng latLng) {
-        if (googleMap != null) {
-            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f));
-            addMarker(latLng, "Selected Location");
+        if (googleMap != null && latLng != null) {
+            try {
+                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f));
+                addMarker(latLng, "Selected Location");
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating map location: " + e.getMessage());
+            }
         }
     }
 
     private void getAddressFromLocation(LatLng latLng) {
+        if (latLng == null) return;
+
         tvSelectedAddress.setText("Getting address...");
 
         new Thread(() -> {
@@ -340,6 +359,8 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void setupAmenitiesChips() {
+        if (chipGroupAmenities == null) return;
+
         chipGroupAmenities.removeAllViews();
 
         for (String amenity : amenitiesList) {
@@ -371,11 +392,11 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void setupClickListeners() {
-        btnAddImages.setOnClickListener(v -> pickImages());
-        btnAddVideo.setOnClickListener(v -> pickVideo());
-        btnAddContract.setOnClickListener(v -> pickContract());
-        btnSubmitRoom.setOnClickListener(v -> validateAndSubmit());
-        btnSearchAddress.setOnClickListener(v -> searchAddress());
+        if (btnAddImages != null) btnAddImages.setOnClickListener(v -> pickImages());
+        if (btnAddVideo != null) btnAddVideo.setOnClickListener(v -> pickVideo());
+        if (btnAddContract != null) btnAddContract.setOnClickListener(v -> pickContract());
+        if (btnSubmitRoom != null) btnSubmitRoom.setOnClickListener(v -> validateAndSubmit());
+        if (btnSearchAddress != null) btnSearchAddress.setOnClickListener(v -> searchAddress());
     }
 
     private void pickImages() {
@@ -455,9 +476,11 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             selectedImageUris.add(data.getData());
         }
 
-        tvImageCount.setText(selectedImageUris.size() + " / " + MAX_IMAGES + " photos");
+        if (tvImageCount != null) {
+            tvImageCount.setText(selectedImageUris.size() + " / " + MAX_IMAGES + " photos");
+        }
 
-        if (!selectedImageUris.isEmpty()) {
+        if (!selectedImageUris.isEmpty() && imagePreviewScroll != null && imagePreviewContainer != null) {
             imagePreviewScroll.setVisibility(View.VISIBLE);
             imagePreviewContainer.removeAllViews();
 
@@ -467,7 +490,11 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 imageView.setPadding(4, 4, 4, 4);
 
-                Glide.with(this).load(imageUri).override(200, 200).centerCrop().into(imageView);
+                try {
+                    Glide.with(this).load(imageUri).override(200, 200).centerCrop().into(imageView);
+                } catch (Exception e) {
+                    imageView.setImageResource(android.R.drawable.ic_menu_gallery);
+                }
                 imagePreviewContainer.addView(imageView);
             }
         }
@@ -476,6 +503,8 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void updateSelectedFilesInfo() {
+        if (tvSelectedFiles == null) return;
+
         StringBuilder info = new StringBuilder();
 
         if (!selectedImageUris.isEmpty()) {
@@ -550,15 +579,29 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         }
 
         // Get location based on selected mode
-        if (locationToggleGroup.getCheckedButtonId() == R.id.btnMapLocation) {
+        int checkedId = locationToggleGroup != null ? locationToggleGroup.getCheckedButtonId() : R.id.btnMapLocation;
+
+        if (checkedId == R.id.btnMapLocation) {
+            // Map mode - use selected location from map
             if (selectedLatLng == null) {
                 showError("Please select a location on the map");
                 return;
+            }
+            // Make sure we have an address
+            if (TextUtils.isEmpty(selectedAddress)) {
+                getAddressFromLocation(selectedLatLng);
+                // Wait a moment for address to be fetched
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         } else {
             // Manual mode - get coordinates from inputs
             String latStr = etLatitude.getText().toString().trim();
             String lngStr = etLongitude.getText().toString().trim();
+            String manualAddress = etManualAddress.getText().toString().trim();
 
             if (TextUtils.isEmpty(latStr) || TextUtils.isEmpty(lngStr)) {
                 showError("Please enter valid latitude and longitude coordinates");
@@ -570,9 +613,18 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 double lng = Double.parseDouble(lngStr);
                 selectedLatLng = new LatLng(lat, lng);
 
-                // If address is empty, try to get it from coordinates
-                if (TextUtils.isEmpty(selectedAddress)) {
+                // Use manual address if provided, otherwise get from coordinates
+                if (!TextUtils.isEmpty(manualAddress)) {
+                    selectedAddress = manualAddress;
+                } else {
+                    // Try to get address from coordinates
                     getAddressFromLocation(selectedLatLng);
+                    // Wait a moment for address to be fetched
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             } catch (NumberFormatException e) {
                 showError("Invalid coordinates format");
@@ -599,14 +651,34 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
         String email = etContactEmail.getText().toString().trim();
 
+        double area = 0;
+        if (!TextUtils.isEmpty(etArea.getText().toString())) {
+            try {
+                area = Double.parseDouble(etArea.getText().toString());
+            } catch (NumberFormatException e) {
+                // Ignore, area remains 0
+            }
+        }
+
+        String rules = etRules.getText().toString().trim();
+
         showLoading(true);
         saveRoomToFirestore(title, description, price, propertyType, phone, email,
-                roomsCount, bathroomsCount, ownerName);
+                roomsCount, bathroomsCount, ownerName, area, rules);
     }
 
     private void saveRoomToFirestore(String title, String description, double price,
                                      String propertyType, String phone, String email,
-                                     int roomsCount, int bathroomsCount, String ownerName) {
+                                     int roomsCount, int bathroomsCount, String ownerName,
+                                     double area, String rules) {
+
+        // CRITICAL: Check if location is set
+        if (selectedLatLng == null) {
+            showLoading(false);
+            showError("Location not set. Please select a location on the map or enter coordinates.");
+            return;
+        }
+
         currentRoomId = db.collection("rooms").document().getId();
 
         Map<String, Object> room = new HashMap<>();
@@ -616,7 +688,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         room.put("price", price);
         room.put("latitude", selectedLatLng.latitude);
         room.put("longitude", selectedLatLng.longitude);
-        room.put("address", selectedAddress);
+        room.put("address", TextUtils.isEmpty(selectedAddress) ? "Location set" : selectedAddress);
         room.put("propertyType", propertyType);
         room.put("contactPhone", phone);
         room.put("contactEmail", email.isEmpty() ? "" : email);
@@ -631,14 +703,28 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         room.put("bathroomsCount", bathroomsCount);
         room.put("postedBy", authenticatedUserId);
         room.put("status", "active");
+        room.put("area", area);
 
-        // Optional fields
-        if (!TextUtils.isEmpty(etArea.getText().toString())) {
-            room.put("area", Double.parseDouble(etArea.getText().toString()));
+        if (!TextUtils.isEmpty(rules)) {
+            List<String> rulesList = new ArrayList<>();
+            if (rules.contains(",")) {
+                String[] parts = rules.split(",");
+                for (String part : parts) {
+                    String trimmed = part.trim();
+                    if (!trimmed.isEmpty()) {
+                        rulesList.add(trimmed);
+                    }
+                }
+            } else {
+                rulesList.add(rules);
+            }
+            room.put("rules", rulesList);
+        } else {
+            room.put("rules", new ArrayList<String>());
         }
-        if (!TextUtils.isEmpty(etRules.getText().toString())) {
-            room.put("rules", etRules.getText().toString().trim());
-        }
+
+        Log.d(TAG, "Saving room with location: " + selectedLatLng.latitude + ", " + selectedLatLng.longitude);
+        Log.d(TAG, "Address: " + selectedAddress);
 
         db.collection("rooms").document(currentRoomId)
                 .set(room)
@@ -680,7 +766,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 json.put("to", "/topics/rooms");
 
                 org.json.JSONObject notification = new org.json.JSONObject();
-                notification.put("title", "New Room Available ");
+                notification.put("title", "New Room Available 🏠");
                 notification.put("body", "Check out the latest room posted!");
 
                 json.put("notification", notification);
@@ -705,18 +791,28 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     private void showLoading(boolean show) {
         runOnUiThread(() -> {
-            overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
-            progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
-            btnSubmitRoom.setEnabled(!show);
+            if (overlayView != null) {
+                overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+            if (progressIndicator != null) {
+                progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+            if (btnSubmitRoom != null) {
+                btnSubmitRoom.setEnabled(!show);
+            }
         });
     }
 
     private void showError(String message) {
         runOnUiThread(() -> {
-            Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG)
-                    .setBackgroundTint(ContextCompat.getColor(this, android.R.color.holo_red_dark))
-                    .setTextColor(ContextCompat.getColor(this, android.R.color.white))
-                    .show();
+            try {
+                Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG)
+                        .setBackgroundTint(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                        .setTextColor(ContextCompat.getColor(this, android.R.color.white))
+                        .show();
+            } catch (Exception e) {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            }
         });
     }
 

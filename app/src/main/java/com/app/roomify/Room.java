@@ -2,6 +2,8 @@ package com.app.roomify;
 
 import androidx.annotation.Nullable;
 
+import com.google.firebase.firestore.Exclude;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -44,6 +46,10 @@ public class Room {
     private List<String> amenities;     // List of amenities (wifi, AC, parking, etc.)
     private List<String> rules;         // House rules for the tenant
 
+    // This field is for backward compatibility and display only
+    // It will NOT be stored in Firestore
+    private transient String rulesText; // transient = not serialized to Firestore
+
     // ==================== MEDIA FILES ====================
     private List<String> images;        // URLs to room images
     private int imageCount;             // NEW: Number of images uploaded (from PostRoomActivity)
@@ -57,9 +63,6 @@ public class Room {
     private String status;              // NEW: Room status (active, pending, inactive)
     private int bookingsCount;          // Number of bookings for this room
     private long createdAt;             // Timestamp of creation (milliseconds)
-
-    // ==================== ADDITIONAL FIELDS ====================
-    private String rulesText;           // NEW: Text version of rules (from PostRoomActivity)
 
     // ==================== CONSTRUCTORS ====================
 
@@ -217,18 +220,10 @@ public class Room {
         this.postedBy = postedBy;
     }
 
-    /**
-     * NEW: Get owner's full name
-     * @return Owner's name as entered in PostRoomActivity
-     */
     public String getOwnerName() {
         return ownerName != null ? ownerName : "";
     }
 
-    /**
-     * NEW: Set owner's full name
-     * @param ownerName Owner's full name
-     */
     public void setOwnerName(String ownerName) {
         this.ownerName = ownerName;
     }
@@ -287,14 +282,53 @@ public class Room {
         return rules != null ? rules : new ArrayList<>();
     }
 
-    public void setRules(List<String> rules) {
-        this.rules = rules != null ? rules : new ArrayList<>();
+    /**
+     * CRITICAL FIX: Custom setter for rules to handle both String and List from Firestore.
+     * This method will be used by Firestore during deserialization.
+     */
+    public void setRules(Object rulesObject) {
+        if (rulesObject == null) {
+            this.rules = new ArrayList<>();
+            return;
+        }
+
+        if (rulesObject instanceof List) {
+            // If it's already a List
+            List<?> tempList = (List<?>) rulesObject;
+            this.rules = new ArrayList<>();
+            for (Object item : tempList) {
+                if (item instanceof String) {
+                    this.rules.add((String) item);
+                }
+            }
+        } else if (rulesObject instanceof String) {
+            // If it's a single String
+            String rulesString = (String) rulesObject;
+            this.rules = new ArrayList<>();
+
+            // Check if it's comma-separated
+            if (rulesString.contains(",")) {
+                String[] parts = rulesString.split(",");
+                for (String part : parts) {
+                    String trimmed = part.trim();
+                    if (!trimmed.isEmpty()) {
+                        this.rules.add(trimmed);
+                    }
+                }
+            } else {
+                this.rules.add(rulesString);
+            }
+        } else {
+            // Default fallback
+            this.rules = new ArrayList<>();
+        }
     }
 
     /**
-     * NEW: Get rules as plain text (for display)
+     * Get rules as plain text (for display)
      * @return Concatenated rules or rules text
      */
+    @Exclude
     public String getRulesText() {
         if (rulesText != null && !rulesText.isEmpty()) {
             return rulesText;
@@ -305,6 +339,10 @@ public class Room {
         return "";
     }
 
+    /**
+     * Set rules text (this is for UI only, not stored in Firestore)
+     */
+    @Exclude
     public void setRulesText(String rulesText) {
         this.rulesText = rulesText;
     }
@@ -314,54 +352,54 @@ public class Room {
         return images != null ? images : new ArrayList<>();
     }
 
-    public void setImages(List<String> images) {
-        this.images = images != null ? images : new ArrayList<>();
+    /**
+     * Custom setter for images to handle both String and List.
+     */
+    public void setImages(Object imagesObject) {
+        if (imagesObject == null) {
+            this.images = new ArrayList<>();
+            return;
+        }
+
+        if (imagesObject instanceof List) {
+            List<?> tempList = (List<?>) imagesObject;
+            this.images = new ArrayList<>();
+            for (Object item : tempList) {
+                if (item instanceof String) {
+                    this.images.add((String) item);
+                }
+            }
+        } else if (imagesObject instanceof String) {
+            this.images = new ArrayList<>();
+            this.images.add((String) imagesObject);
+        } else {
+            this.images = new ArrayList<>();
+        }
+
+        // Update imageCount based on the resulting list
+        this.imageCount = this.images.size();
     }
 
-    /**
-     * NEW: Get image count
-     * @return Number of images uploaded
-     */
     public int getImageCount() {
         return imageCount;
     }
 
-    /**
-     * NEW: Set image count
-     * @param imageCount Number of images
-     */
     public void setImageCount(int imageCount) {
         this.imageCount = imageCount;
     }
 
-    /**
-     * NEW: Check if room has video
-     * @return true if video exists
-     */
     public boolean isHasVideo() {
         return hasVideo;
     }
 
-    /**
-     * NEW: Set video availability
-     * @param hasVideo true if video exists
-     */
     public void setHasVideo(boolean hasVideo) {
         this.hasVideo = hasVideo;
     }
 
-    /**
-     * NEW: Check if room has contract
-     * @return true if contract exists
-     */
     public boolean isHasContract() {
         return hasContract;
     }
 
-    /**
-     * NEW: Set contract availability
-     * @param hasContract true if contract exists
-     */
     public void setHasContract(boolean hasContract) {
         this.hasContract = hasContract;
     }
@@ -393,18 +431,10 @@ public class Room {
         isAvailable = available;
     }
 
-    /**
-     * NEW: Get room status (active, pending, inactive)
-     * @return Room status string
-     */
     public String getStatus() {
         return status != null ? status : "active";
     }
 
-    /**
-     * NEW: Set room status
-     * @param status Room status
-     */
     public void setStatus(String status) {
         this.status = status;
     }
@@ -455,6 +485,7 @@ public class Room {
      * Helper method to get formatted bookings text
      * @return Human-readable booking count string
      */
+    @Exclude
     public String getBookingsText() {
         if (bookingsCount == 0) {
             return "No bookings yet";
@@ -469,6 +500,7 @@ public class Room {
      * Helper method to get formatted price with currency
      * @return Formatted price string (e.g., "TZS 500,000")
      */
+    @Exclude
     public String getFormattedPrice() {
         return "TZS " + String.format("%,.0f", price);
     }
@@ -477,6 +509,7 @@ public class Room {
      * Helper method to get formatted price with USD prefix
      * @return Formatted price string (e.g., "$500")
      */
+    @Exclude
     public String getFormattedPriceUSD() {
         return "$" + String.format("%,.0f", price);
     }
@@ -485,6 +518,7 @@ public class Room {
      * Helper method to get location summary (first line of address)
      * @return Short location description
      */
+    @Exclude
     public String getLocationSummary() {
         if (address != null && !address.isEmpty()) {
             String[] parts = address.split(",");
@@ -497,6 +531,7 @@ public class Room {
      * Helper method to check if room has images
      * @return true if images exist
      */
+    @Exclude
     public boolean hasImages() {
         return (images != null && !images.isEmpty()) || imageCount > 0;
     }
@@ -505,6 +540,7 @@ public class Room {
      * Helper method to get first image URL
      * @return First image URL or null if none exist
      */
+    @Exclude
     public String getFirstImageUrl() {
         if (hasImages() && images != null && !images.isEmpty()) {
             return images.get(0);
@@ -516,6 +552,7 @@ public class Room {
      * Helper method to get amenities count
      * @return Number of amenities
      */
+    @Exclude
     public int getAmenitiesCount() {
         return amenities != null ? amenities.size() : 0;
     }
@@ -533,6 +570,7 @@ public class Room {
      * Helper method to get formatted address (short version)
      * @return Short address string
      */
+    @Exclude
     public String getShortAddress() {
         if (address != null && !address.isEmpty()) {
             String[] parts = address.split(",");
@@ -548,6 +586,7 @@ public class Room {
      * Helper method to get room type display string
      * @return Formatted room type with details
      */
+    @Exclude
     public String getRoomTypeDisplay() {
         StringBuilder display = new StringBuilder();
         display.append(roomsCount).append(" bed");
@@ -565,6 +604,7 @@ public class Room {
      * Helper method to check if room is recently posted (within last 7 days)
      * @return true if posted within last 7 days
      */
+    @Exclude
     public boolean isRecentlyPosted() {
         long sevenDaysInMillis = 7 * 24 * 60 * 60 * 1000L;
         return (System.currentTimeMillis() - createdAt) <= sevenDaysInMillis;
@@ -574,6 +614,7 @@ public class Room {
      * Helper method to get time ago text
      * @return Human-readable time since posting
      */
+    @Exclude
     public String getTimeAgo() {
         long diff = System.currentTimeMillis() - createdAt;
         long days = diff / (24 * 60 * 60 * 1000);
@@ -596,6 +637,7 @@ public class Room {
     /**
      * Alias for getImages() - maintains backward compatibility
      */
+    @Exclude
     public List<String> getImageUrls() {
         return getImages();
     }
@@ -603,14 +645,15 @@ public class Room {
     /**
      * Alias for setImages() - maintains backward compatibility
      */
+    @Exclude
     public void setImageUrls(List<String> imageUrls) {
         setImages(imageUrls);
-        this.imageCount = imageUrls != null ? imageUrls.size() : 0;
     }
 
     /**
      * Alias for getRoomsCount() - maintains backward compatibility
      */
+    @Exclude
     public int getBedrooms() {
         return roomsCount;
     }
@@ -618,6 +661,7 @@ public class Room {
     /**
      * Alias for setRoomsCount() - maintains backward compatibility
      */
+    @Exclude
     public void setBedrooms(int bedrooms) {
         this.roomsCount = bedrooms;
     }
@@ -625,6 +669,7 @@ public class Room {
     /**
      * Alias for getBathroomsCount() - maintains backward compatibility
      */
+    @Exclude
     public int getBathrooms() {
         return bathroomsCount;
     }
@@ -632,6 +677,7 @@ public class Room {
     /**
      * Alias for setBathroomsCount() - maintains backward compatibility
      */
+    @Exclude
     public void setBathrooms(int bathrooms) {
         this.bathroomsCount = bathrooms;
     }
@@ -640,6 +686,7 @@ public class Room {
      * Get posted date as Date object
      * @return Date object from createdAt timestamp
      */
+    @Exclude
     public Date getPostedDate() {
         return createdAt > 0 ? new Date(createdAt) : new Date();
     }
@@ -648,6 +695,7 @@ public class Room {
      * Set posted date from Date object
      * @param postedDate Date object
      */
+    @Exclude
     public void setPostedDate(Date postedDate) {
         this.createdAt = postedDate != null ? postedDate.getTime() : System.currentTimeMillis();
     }
@@ -656,6 +704,7 @@ public class Room {
      * Check if room has video (alternative method name)
      * @return true if video exists
      */
+    @Exclude
     public boolean hasVideo() {
         return hasVideo;
     }
@@ -664,6 +713,7 @@ public class Room {
      * Check if room has contract (alternative method name)
      * @return true if contract exists
      */
+    @Exclude
     public boolean hasContract() {
         return hasContract;
     }
@@ -701,6 +751,7 @@ public class Room {
      * Detailed toString for debugging
      * @return Detailed room information
      */
+    @Exclude
     public String toDetailedString() {
         return "Room{" +
                 "id='" + id + '\'' +
@@ -713,6 +764,7 @@ public class Room {
                 ", bathroomsCount=" + bathroomsCount +
                 ", area=" + area +
                 ", amenities=" + amenities +
+                ", rules=" + rules +
                 ", imageCount=" + imageCount +
                 ", hasVideo=" + hasVideo +
                 ", hasContract=" + hasContract +

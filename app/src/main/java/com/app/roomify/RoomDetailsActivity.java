@@ -6,7 +6,9 @@ import android.content.pm.PackageManager;
 import android.location.Address;
 import android.location.Geocoder;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -20,6 +22,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
@@ -27,6 +30,7 @@ import androidx.viewpager2.widget.ViewPager2;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.storage.FirebaseStorage;
@@ -37,7 +41,12 @@ import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -45,24 +54,42 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class RoomDetailsActivity extends AppCompatActivity {
 
     private static final String TAG = "RoomDetailsActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 200;
+    private static final int STORAGE_PERMISSION_REQUEST_CODE = 201;
 
     // ==================== UI COMPONENTS ====================
+    // Basic Info
     private TextView tvTitle, tvPrice, tvAddress, tvDescription, tvBedrooms, tvBathrooms, tvArea, tvPostedDate;
     private TextView tvRoomStatus, tvOwnerName, tvOwnerRating, tvMemberSince;
     private ImageView ivOwnerProfile;
+
+    // Action Buttons
     private MaterialButton btnGetDirections, btnCallOwner, btnMessageOwner;
     private Button btnBookNow;
     private ImageButton btnFavorite;
+
+    // Media Components
     private ViewPager2 viewPagerImages;
     private LinearLayout imageIndicator;
     private RecyclerView rvAmenities;
     private View amenitiesCard;
     private MapView mapPreview;
+
+    // Media Action Layouts and Buttons
+    private LinearLayout mediaActionsLayout;
+    private LinearLayout videoActionsRow;
+    private LinearLayout contractActionsRow;
+    private MaterialButton btnViewImages;
+    private MaterialButton btnPlayVideo;
+    private MaterialButton btnDownloadVideo;
+    private MaterialButton btnViewContractDoc;
+    private MaterialButton btnDownloadContract;
 
     // ==================== DATA HOLDERS ====================
     private double roomLat = 0, roomLng = 0;
@@ -77,6 +104,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private FusedLocationProviderClient fusedLocationClient;
     private FirebaseFirestore db;
     private FirebaseStorage storage;
+    private ExecutorService executorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,6 +114,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
         // Initialize
         initializeFirebase();
         initializeOSMDroid();
+        executorService = Executors.newSingleThreadExecutor();
 
         // Get roomId
         roomId = getIntent().getStringExtra("room_id");
@@ -100,13 +129,17 @@ public class RoomDetailsActivity extends AppCompatActivity {
         setupClickListeners();
 
         // Load data
-        btnBookNow.setEnabled(false);
-        btnBookNow.setText("Loading...");
+        if (btnBookNow != null) {
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Loading...");
+        }
 
         loadRoomDetails();
         checkIfAlreadyRequested();
         checkIfFavorite();
     }
+
+    // ==================== INITIALIZATION METHODS ====================
 
     private void initializeFirebase() {
         db = FirebaseFirestore.getInstance();
@@ -120,6 +153,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
                     getApplicationContext(),
                     getSharedPreferences("osmdroid_prefs", MODE_PRIVATE)
             );
+            Configuration.getInstance().setUserAgentValue(getPackageName());
         } catch (Exception e) {
             Log.w(TAG, "OSMDroid init: " + e.getMessage());
         }
@@ -150,7 +184,19 @@ public class RoomDetailsActivity extends AppCompatActivity {
         btnBookNow = findViewById(R.id.btnBookNow);
         btnFavorite = findViewById(R.id.btnFavorite);
 
-        // Media
+        // Media Action Layouts
+        mediaActionsLayout = findViewById(R.id.mediaActionsLayout);
+        videoActionsRow = findViewById(R.id.videoActionsRow);
+        contractActionsRow = findViewById(R.id.contractActionsRow);
+
+        // Media Buttons
+        btnViewImages = findViewById(R.id.btnViewImages);
+        btnPlayVideo = findViewById(R.id.btnPlayVideo);
+        btnDownloadVideo = findViewById(R.id.btnDownloadVideo);
+        btnViewContractDoc = findViewById(R.id.btnViewContractDoc);
+        btnDownloadContract = findViewById(R.id.btnDownloadContract);
+
+        // Media Components
         viewPagerImages = findViewById(R.id.viewPagerImages);
         imageIndicator = findViewById(R.id.imageIndicator);
         rvAmenities = findViewById(R.id.rvAmenities);
@@ -163,9 +209,26 @@ public class RoomDetailsActivity extends AppCompatActivity {
         if (rvAmenities != null) {
             rvAmenities.setLayoutManager(new LinearLayoutManager(this));
         }
+
+        // Verify views are initialized
+        verifyViews();
+    }
+
+    private void verifyViews() {
+        Log.d(TAG, "=== VERIFYING VIEWS ===");
+        Log.d(TAG, "mediaActionsLayout: " + (mediaActionsLayout != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "videoActionsRow: " + (videoActionsRow != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "contractActionsRow: " + (contractActionsRow != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnViewImages: " + (btnViewImages != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnPlayVideo: " + (btnPlayVideo != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnDownloadVideo: " + (btnDownloadVideo != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnViewContractDoc: " + (btnViewContractDoc != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnDownloadContract: " + (btnDownloadContract != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "=====================");
     }
 
     private void setupClickListeners() {
+        // Navigation
         if (btnGetDirections != null) {
             btnGetDirections.setOnClickListener(v -> openDirections());
         }
@@ -187,14 +250,40 @@ public class RoomDetailsActivity extends AppCompatActivity {
         if (btnFavorite != null) {
             btnFavorite.setOnClickListener(v -> toggleFavorite());
         }
+
+        // Media Actions
+        if (btnViewImages != null) {
+            btnViewImages.setOnClickListener(v -> viewAllImages());
+        }
+        if (btnPlayVideo != null) {
+            btnPlayVideo.setOnClickListener(v -> playVideo());
+        }
+        if (btnDownloadVideo != null) {
+            btnDownloadVideo.setOnClickListener(v -> downloadVideo());
+        }
+        if (btnViewContractDoc != null) {
+            btnViewContractDoc.setOnClickListener(v -> viewContract());
+        }
+        if (btnDownloadContract != null) {
+            btnDownloadContract.setOnClickListener(v -> downloadContract());
+        }
+
+        // Image gallery click
+        if (viewPagerImages != null) {
+            viewPagerImages.setOnClickListener(v -> viewAllImages());
+        }
     }
+
+    // ==================== DATA LOADING METHODS ====================
 
     private void loadRoomDetails() {
         FirebaseUtils.getRoom(roomId, task -> {
             if (!task.isSuccessful() || task.getResult() == null) {
                 Toast.makeText(this, "Failed to load room", Toast.LENGTH_SHORT).show();
-                btnBookNow.setEnabled(false);
-                btnBookNow.setText("Error Loading");
+                if (btnBookNow != null) {
+                    btnBookNow.setEnabled(false);
+                    btnBookNow.setText("Error Loading");
+                }
                 return;
             }
 
@@ -202,8 +291,10 @@ public class RoomDetailsActivity extends AppCompatActivity {
             Room room = doc.toObject(Room.class);
             if (room == null) {
                 Toast.makeText(this, "Room data not found", Toast.LENGTH_SHORT).show();
-                btnBookNow.setEnabled(false);
-                btnBookNow.setText("Data Error");
+                if (btnBookNow != null) {
+                    btnBookNow.setEnabled(false);
+                    btnBookNow.setText("Data Error");
+                }
                 return;
             }
 
@@ -219,8 +310,11 @@ public class RoomDetailsActivity extends AppCompatActivity {
             setupMapPreview(room);
             updateRoomStatus(room);
             updateBookButtonState(room);
+            updateMediaButtonsVisibility(room);
         });
     }
+
+    // ==================== DISPLAY METHODS ====================
 
     private void displayBasicInfo(Room room) {
         if (tvTitle != null) tvTitle.setText(getSafeString(room.getTitle()));
@@ -292,6 +386,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 })
                 .addOnFailureListener(e -> {
                     if (tvOwnerName != null) tvOwnerName.setText("Owner");
+                    Log.e(TAG, "Failed to load owner details", e);
                 });
     }
 
@@ -310,13 +405,17 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
     }
 
+    // ==================== MEDIA METHODS ====================
+
     private void loadRoomMedia(Room room) {
         if (room.getImageCount() > 0) {
             loadImagesFromStorage();
         } else {
-            if (viewPagerImages != null) viewPagerImages.setVisibility(View.GONE);
-            if (imageIndicator != null) imageIndicator.setVisibility(View.GONE);
+            hideImageGallery();
         }
+
+        Log.d(TAG, "Has video: " + room.isHasVideo());
+        Log.d(TAG, "Has contract: " + room.isHasContract());
     }
 
     private void loadImagesFromStorage() {
@@ -350,6 +449,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private void hideImageGallery() {
         if (viewPagerImages != null) viewPagerImages.setVisibility(View.GONE);
         if (imageIndicator != null) imageIndicator.setVisibility(View.GONE);
+        if (btnViewImages != null) btnViewImages.setVisibility(View.GONE);
     }
 
     private void setupImagePager() {
@@ -361,6 +461,10 @@ public class RoomDetailsActivity extends AppCompatActivity {
         ImagePagerAdapter adapter = new ImagePagerAdapter(imageUrls);
         viewPagerImages.setAdapter(adapter);
         setupImageIndicator();
+
+        if (btnViewImages != null) {
+            btnViewImages.setVisibility(View.VISIBLE);
+        }
     }
 
     private void setupImageIndicator() {
@@ -396,6 +500,264 @@ public class RoomDetailsActivity extends AppCompatActivity {
         });
     }
 
+    private void updateMediaButtonsVisibility(Room room) {
+        if (room == null) return;
+
+        try {
+            boolean hasAnyMedia = false;
+
+            // Video Section
+            boolean hasVideo = room.isHasVideo() &&
+                    room.getVideoUrl() != null &&
+                    !room.getVideoUrl().isEmpty();
+
+            if (videoActionsRow != null) {
+                videoActionsRow.setVisibility(hasVideo ? View.VISIBLE : View.GONE);
+                if (hasVideo) hasAnyMedia = true;
+            }
+
+            // Contract Section
+            boolean hasContract = room.isHasContract() &&
+                    room.getContractUrl() != null &&
+                    !room.getContractUrl().isEmpty();
+
+            if (contractActionsRow != null) {
+                contractActionsRow.setVisibility(hasContract ? View.VISIBLE : View.GONE);
+                if (hasContract) hasAnyMedia = true;
+            }
+
+            // Show/hide individual buttons
+            if (btnPlayVideo != null) {
+                btnPlayVideo.setVisibility(hasVideo ? View.VISIBLE : View.GONE);
+            }
+            if (btnDownloadVideo != null) {
+                btnDownloadVideo.setVisibility(hasVideo ? View.VISIBLE : View.GONE);
+            }
+            if (btnViewContractDoc != null) {
+                btnViewContractDoc.setVisibility(hasContract ? View.VISIBLE : View.GONE);
+            }
+            if (btnDownloadContract != null) {
+                btnDownloadContract.setVisibility(hasContract ? View.VISIBLE : View.GONE);
+            }
+
+            // Hide entire media card if no media
+            View mediaCard = findViewById(R.id.mediaActionsCard);
+            if (!hasAnyMedia) {
+                if (mediaActionsLayout != null) mediaActionsLayout.setVisibility(View.GONE);
+                if (mediaCard != null) mediaCard.setVisibility(View.GONE);
+            } else {
+                if (mediaActionsLayout != null) mediaActionsLayout.setVisibility(View.VISIBLE);
+                if (mediaCard != null) mediaCard.setVisibility(View.VISIBLE);
+            }
+
+            Log.d(TAG, "Media visibility - Video: " + hasVideo + ", Contract: " + hasContract);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating media buttons: " + e.getMessage());
+        }
+    }
+
+    // ==================== MEDIA ACTION METHODS ====================
+
+    private void viewAllImages() {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            Toast.makeText(this, "No images available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Intent intent = new Intent(this, MediaViewerActivity.class);
+        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_IMAGES);
+        intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(imageUrls));
+        intent.putExtra(MediaViewerActivity.EXTRA_CURRENT_POSITION,
+                viewPagerImages != null ? viewPagerImages.getCurrentItem() : 0);
+        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE, currentRoom != null ? currentRoom.getTitle() : "Room");
+        startActivity(intent);
+    }
+
+    private void playVideo() {
+        if (currentRoom == null || !currentRoom.isHasVideo() || currentRoom.getVideoUrl() == null) {
+            Toast.makeText(this, "No video available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<String> videoUrls = new ArrayList<>();
+        videoUrls.add(currentRoom.getVideoUrl());
+
+        Intent intent = new Intent(this, MediaViewerActivity.class);
+        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_VIDEO);
+        intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(videoUrls));
+        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE, currentRoom.getTitle());
+        startActivity(intent);
+    }
+
+    private void downloadVideo() {
+        if (currentRoom == null || !currentRoom.isHasVideo() || currentRoom.getVideoUrl() == null) {
+            Toast.makeText(this, "No video available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!checkStoragePermission()) {
+            requestStoragePermission();
+            return;
+        }
+
+        String videoUrl = currentRoom.getVideoUrl();
+        String fileName = "room_video_" + roomId + "_" + System.currentTimeMillis() + ".mp4";
+        downloadFile(videoUrl, fileName, "Video");
+    }
+
+    private void viewContract() {
+        if (currentRoom == null || !currentRoom.isHasContract() || currentRoom.getContractUrl() == null) {
+            Toast.makeText(this, "No contract available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Intent intent = new Intent(this, MediaViewerActivity.class);
+        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_DOCUMENT);
+        intent.putExtra("document_url", currentRoom.getContractUrl());
+        intent.putExtra("document_name", "Contract_" + roomId + ".pdf");
+        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE, currentRoom.getTitle());
+        startActivity(intent);
+    }
+
+    private void downloadContract() {
+        if (currentRoom == null || !currentRoom.isHasContract() || currentRoom.getContractUrl() == null) {
+            Toast.makeText(this, "No contract available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!checkStoragePermission()) {
+            requestStoragePermission();
+            return;
+        }
+
+        String contractUrl = currentRoom.getContractUrl();
+        String fileName = "contract_" + roomId + "_" + System.currentTimeMillis() + ".pdf";
+        downloadFile(contractUrl, fileName, "Contract");
+    }
+
+    private void downloadFile(String fileUrl, String fileName, String fileType) {
+        Toast.makeText(this, "Downloading " + fileType + "...", Toast.LENGTH_SHORT).show();
+
+        executorService.execute(() -> {
+            try {
+                URL url = new URL(fileUrl);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(15000);
+                connection.connect();
+
+                if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                    InputStream inputStream = connection.getInputStream();
+
+                    File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (!downloadDir.exists()) {
+                        downloadDir.mkdirs();
+                    }
+
+                    File outputFile = new File(downloadDir, fileName);
+                    FileOutputStream outputStream = new FileOutputStream(outputFile);
+
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    long totalBytes = 0;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                        totalBytes += bytesRead;
+                    }
+
+                    outputStream.close();
+                    inputStream.close();
+                    connection.disconnect();
+
+                    final long finalTotalBytes = totalBytes;
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, fileType + " downloaded: " + fileName +
+                                " (" + (finalTotalBytes / 1024) + " KB)", Toast.LENGTH_LONG).show();
+                        showDownloadCompleteDialog(fileName);
+                    });
+                } else {
+                    runOnUiThread(() -> Toast.makeText(this, "Download failed: Server error", Toast.LENGTH_SHORT).show());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Download error: " + e.getMessage());
+                runOnUiThread(() -> Toast.makeText(this, "Download error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    private void showDownloadCompleteDialog(String fileName) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Download Complete")
+                .setMessage(fileName + " has been downloaded to Downloads folder")
+                .setPositiveButton("Open", (dialog, which) -> openDownloadedFile(fileName))
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void openDownloadedFile(String fileName) {
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File file = new File(downloadDir, fileName);
+
+        if (file.exists()) {
+            Uri fileUri;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                fileUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+            } else {
+                fileUri = Uri.fromFile(file);
+            }
+
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(fileUri, getMimeType(fileName));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            try {
+                startActivity(Intent.createChooser(intent, "Open with"));
+            } catch (Exception e) {
+                Toast.makeText(this, "No app found to open this file", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            Toast.makeText(this, "File not found", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String getMimeType(String fileName) {
+        if (fileName.endsWith(".pdf")) return "application/pdf";
+        if (fileName.endsWith(".mp4")) return "video/mp4";
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) return "image/jpeg";
+        if (fileName.endsWith(".png")) return "image/png";
+        return "*/*";
+    }
+
+    private boolean checkStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        } else {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED;
+        }
+    }
+
+    private void requestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } catch (Exception e) {
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                startActivity(intent);
+            }
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    STORAGE_PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    // ==================== MAP METHODS ====================
+
     private void setupMapPreview(Room room) {
         if (mapPreview == null) return;
 
@@ -408,6 +770,9 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 roomPoint = new GeoPoint(roomLat, roomLng);
             } else {
                 roomPoint = new GeoPoint(-6.7924, 39.2083);
+                if (room.getAddress() != null && !room.getAddress().isEmpty()) {
+                    geocodeAddress(room.getAddress());
+                }
             }
 
             mapPreview.getController().setCenter(roomPoint);
@@ -425,6 +790,29 @@ public class RoomDetailsActivity extends AppCompatActivity {
             if (mapPreview != null) mapPreview.setVisibility(View.GONE);
         }
     }
+
+    private void geocodeAddress(String address) {
+        if (address == null || address.isEmpty()) return;
+
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            List<Address> addresses = geocoder.getFromLocationName(address, 1);
+            if (addresses != null && !addresses.isEmpty()) {
+                Address location = addresses.get(0);
+                roomLat = location.getLatitude();
+                roomLng = location.getLongitude();
+
+                if (mapPreview != null && mapPreview.getController() != null) {
+                    GeoPoint geoPoint = new GeoPoint(roomLat, roomLng);
+                    mapPreview.getController().setCenter(geoPoint);
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Geocoder error: " + e.getMessage());
+        }
+    }
+
+    // ==================== STATUS & BOOKING METHODS ====================
 
     private void updateRoomStatus(Room room) {
         if (tvRoomStatus == null) return;
@@ -485,7 +873,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
                     } else if (isRoomLoaded && currentRoom != null) {
                         updateBookButtonState(currentRoom);
                     }
-                });
+                })
+                .addOnFailureListener(e -> Log.e(TAG, "Failed to check bookings", e));
     }
 
     private void checkIfFavorite() {
@@ -498,12 +887,15 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 .document(roomId)
                 .get()
                 .addOnSuccessListener(doc -> {
-                    if (doc.exists()) {
-                        btnFavorite.setImageResource(R.drawable.ic_favorite_filled);
-                    } else {
-                        btnFavorite.setImageResource(R.drawable.ic_favorite_outline);
+                    if (btnFavorite != null) {
+                        if (doc.exists()) {
+                            btnFavorite.setImageResource(R.drawable.ic_favorite_filled);
+                        } else {
+                            btnFavorite.setImageResource(R.drawable.ic_favorite_outline);
+                        }
                     }
-                });
+                })
+                .addOnFailureListener(e -> Log.e(TAG, "Failed to check favorite", e));
     }
 
     private void toggleFavorite() {
@@ -526,7 +918,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
                                 .addOnSuccessListener(aVoid -> {
                                     btnFavorite.setImageResource(R.drawable.ic_favorite_outline);
                                     Toast.makeText(this, "Removed from favorites", Toast.LENGTH_SHORT).show();
-                                });
+                                })
+                                .addOnFailureListener(e -> Toast.makeText(this, "Failed to remove", Toast.LENGTH_SHORT).show());
                     } else {
                         Map<String, Object> favorite = new HashMap<>();
                         favorite.put("roomId", roomId);
@@ -537,7 +930,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
                                 .addOnSuccessListener(aVoid -> {
                                     btnFavorite.setImageResource(R.drawable.ic_favorite_filled);
                                     Toast.makeText(this, "Added to favorites", Toast.LENGTH_SHORT).show();
-                                });
+                                })
+                                .addOnFailureListener(e -> Toast.makeText(this, "Failed to add", Toast.LENGTH_SHORT).show());
                     }
                 });
     }
@@ -565,8 +959,10 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
-        btnBookNow.setEnabled(false);
-        btnBookNow.setText("Sending Request...");
+        if (btnBookNow != null) {
+            btnBookNow.setEnabled(false);
+            btnBookNow.setText("Sending Request...");
+        }
 
         String ownerName = currentRoom.getOwnerName();
         if (ownerName == null || ownerName.isEmpty()) ownerName = "Owner";
@@ -589,7 +985,10 @@ public class RoomDetailsActivity extends AppCompatActivity {
                     bookingData.put("ownerName", finalOwnerName);
                     bookingData.put("timestamp", System.currentTimeMillis());
                     bookingData.put("status", "pending");
+                    bookingData.put("bookingDate", new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                            .format(new Date()));
 
+                    String finalUserName = userName;
                     FirebaseUtils.getRoomBookingsCollection(currentRoom.getId())
                             .add(bookingData)
                             .addOnSuccessListener(docRef -> {
@@ -601,12 +1000,44 @@ public class RoomDetailsActivity extends AppCompatActivity {
                                         .addOnSuccessListener(aVoid -> {
                                             Toast.makeText(this, "Booking request sent", Toast.LENGTH_SHORT).show();
                                             alreadyRequested = true;
-                                            btnBookNow.setEnabled(false);
-                                            btnBookNow.setText("Already Requested");
+                                            if (btnBookNow != null) {
+                                                btnBookNow.setEnabled(false);
+                                                btnBookNow.setText("Already Requested");
+                                            }
+
+                                            FirebaseUtils.sendNotificationToUser(
+                                                    ownerId,
+                                                    "New Booking Request",
+                                                    finalUserName + " wants to book " + currentRoom.getTitle(),
+                                                    docRef.getId()
+                                            );
+                                        })
+                                        .addOnFailureListener(e -> {
+                                            Toast.makeText(this, "Failed to save booking", Toast.LENGTH_SHORT).show();
+                                            if (btnBookNow != null) {
+                                                btnBookNow.setEnabled(true);
+                                                btnBookNow.setText("Book Now");
+                                            }
                                         });
+                            })
+                            .addOnFailureListener(e -> {
+                                Toast.makeText(this, "Failed to send request", Toast.LENGTH_SHORT).show();
+                                if (btnBookNow != null) {
+                                    btnBookNow.setEnabled(true);
+                                    btnBookNow.setText("Book Now");
+                                }
                             });
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(this, "Failed to get user details", Toast.LENGTH_SHORT).show();
+                    if (btnBookNow != null) {
+                        btnBookNow.setEnabled(true);
+                        btnBookNow.setText("Book Now");
+                    }
                 });
     }
+
+    // ==================== CONTACT & NAVIGATION METHODS ====================
 
     private void openDirections() {
         if (roomLat == 0 || roomLng == 0) {
@@ -632,6 +1063,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
                     "&travelmode=driving";
 
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(uri)));
+        }).addOnFailureListener(e -> {
+            Toast.makeText(this, "Unable to get current location", Toast.LENGTH_SHORT).show();
         });
     }
 
@@ -659,6 +1092,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
     }
 
+    // ==================== HELPER METHODS ====================
+
     private String getSafeString(String str) {
         return str != null ? str : "";
     }
@@ -667,25 +1102,51 @@ public class RoomDetailsActivity extends AppCompatActivity {
         return (int) (dp * getResources().getDisplayMetrics().density);
     }
 
+    // ==================== LIFECYCLE METHODS ====================
+
     @Override
     protected void onResume() {
         super.onResume();
-        if (mapPreview != null) mapPreview.onResume();
+        if (mapPreview != null) {
+            try {
+                mapPreview.onResume();
+            } catch (Exception e) {
+                Log.e(TAG, "Error resuming map: " + e.getMessage());
+            }
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (mapPreview != null) mapPreview.onPause();
+        if (mapPreview != null) {
+            try {
+                mapPreview.onPause();
+            } catch (Exception e) {
+                Log.e(TAG, "Error pausing map: " + e.getMessage());
+            }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
+        }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             openDirections();
+        } else if (requestCode == STORAGE_PERMISSION_REQUEST_CODE && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Storage permission granted", Toast.LENGTH_SHORT).show();
         }
     }
 }

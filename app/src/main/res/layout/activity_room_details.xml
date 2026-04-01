@@ -32,8 +32,29 @@
                 android:layout_centerHorizontal="true"
                 android:layout_marginBottom="16dp"
                 android:orientation="horizontal"
-                android:padding="4dp" />
+                android:padding="4dp"
+                android:background="#80000000"
+                android:visibility="gone" />
 
+            <!-- View Images Button Overlay -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewImages"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:text="View All"
+                android:textSize="12sp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                app:icon="@drawable/ic_image"
+                app:iconGravity="textStart"
+                app:iconSize="16dp"
+                android:backgroundTint="#CC000000"
+                app:cornerRadius="20dp"
+                android:visibility="gone" />
 
             <!-- Favorite Button -->
             <ImageButton
@@ -46,7 +67,8 @@
                 android:layout_marginTop="16dp"
                 android:background="@drawable/rounded_button_bg"
                 android:contentDescription="@string/favorite"
-                android:scaleType="center"/>
+                android:scaleType="center"
+                android:src="@drawable/ic_favorite_outline" />
 
         </RelativeLayout>
 
@@ -76,7 +98,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="@string/luxury_apartment"
+                        android:text="Luxury Apartment"
                         android:textColor="@color/black"
                         android:textSize="24sp"
                         android:textStyle="bold" />
@@ -85,7 +107,7 @@
                         android:id="@+id/tvRoomPrice"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/_1500"
+                        android:text="$1500"
                         android:textColor="@color/primary"
                         android:textSize="24sp"
                         android:textStyle="bold" />
@@ -111,7 +133,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="@string/_123_main_street_new_york_ny"
+                        android:text="123 Main Street"
                         android:textColor="@color/grey"
                         android:textSize="14sp" />
 
@@ -126,7 +148,7 @@
                     android:background="@drawable/status_available_bg"
                     android:paddingHorizontal="12dp"
                     android:paddingVertical="4dp"
-                    android:text="@string/available"
+                    android:text="Available"
                     android:textColor="@color/white"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -158,6 +180,7 @@
                             android:id="@+id/tvBedrooms"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:text="2 Bedrooms"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -180,7 +203,7 @@
                             android:id="@+id/tvBathrooms"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/_1_bathroom"
+                            android:text="2 Bathrooms"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -196,13 +219,14 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:layout_marginEnd="8dp"
+                            android:src="@drawable/ic_area"
                             app:tint="@color/primary" />
 
                         <TextView
                             android:id="@+id/tvArea"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/_850_sq_ft"
+                            android:text="850 sq ft"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -225,6 +249,7 @@
                             android:id="@+id/tvPostedDate"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:text="Posted: Jan 2024"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -242,7 +267,7 @@
                     android:id="@+id/tvDescriptionLabel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/description11"
+                    android:text="Description"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -252,10 +277,125 @@
                     android:id="@+id/tvRoomDescription"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/spacious_2_bedroom_apartment_with_modern_amenities"
+                    android:text="Spacious apartment with modern amenities"
                     android:textColor="@color/grey_dark"
                     android:textSize="14sp"
                     android:lineSpacingExtra="4dp" />
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Media Actions Card (NEW) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/mediaActionsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:id="@+id/mediaActionsLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Media and Documents"
+                    android:textColor="@color/black"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Video Actions Row -->
+                <LinearLayout
+                    android:id="@+id/videoActionsRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Room Video Tour"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPlayVideo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Play"
+                        app:icon="@drawable/ic_play"
+                        app:iconGravity="textStart"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="12dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDownloadVideo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:text="Download"
+                        app:icon="@drawable/ic_download"
+                        app:iconGravity="textStart"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="12dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                </LinearLayout>
+
+                <!-- Contract Actions Row -->
+                <LinearLayout
+                    android:id="@+id/contractActionsRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Rental Contract"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnViewContractDoc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="View"
+                        app:icon="@drawable/ic_pdf"
+                        app:iconGravity="textStart"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="12dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDownloadContract"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:text="Download"
+                        app:icon="@drawable/ic_download"
+                        app:iconGravity="textStart"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="12dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
@@ -280,7 +420,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/amenities1"
+                    android:text="Amenities"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -325,7 +465,7 @@
                     android:layout_centerHorizontal="true"
                     android:layout_marginBottom="16dp"
                     android:backgroundTint="@color/primary"
-                    android:text="@string/get_directions"
+                    android:text="Get Directions"
                     android:textColor="@color/white"
                     style="@style/Widget.MaterialComponents.Button" />
 
@@ -351,7 +491,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/contact_owner"
+                    android:text="Contact Owner"
                     android:textColor="@color/black"
                     android:textSize="18sp"
                     android:textStyle="bold"
@@ -370,6 +510,8 @@
                         android:layout_height="60dp"
                         android:src="@drawable/ic_profile"
                         android:scaleType="centerCrop"
+                        android:background="@drawable/circular_background"
+                        android:padding="4dp"
                         android:layout_marginEnd="12dp" />
 
                     <LinearLayout
@@ -382,7 +524,7 @@
                             android:id="@+id/tvOwnerName"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/john_doe"
+                            android:text="John Doe"
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
@@ -390,7 +532,7 @@
                             android:id="@+id/tvOwnerRating"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/_4_8_24_reviews"
+                            android:text="★ 4.8 (24 reviews)"
                             android:textColor="@color/grey"
                             android:textSize="14sp" />
 
@@ -398,7 +540,7 @@
                             android:id="@+id/tvMemberSince"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/member_since_2023"
+                            android:text="Member since 2023"
                             android:textColor="@color/grey"
                             android:textSize="12sp" />
 
@@ -416,27 +558,29 @@
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnCallOwner"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
                         android:layout_marginEnd="8dp"
                         android:backgroundTint="@color/primary"
-                        android:text="@string/call"
+                        android:text="Call"
                         android:textColor="@color/white"
                         android:drawableStart="@drawable/ic_call"
                         android:drawablePadding="8dp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                        app:cornerRadius="24dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnMessageOwner"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
                         android:backgroundTint="@color/white"
-                        android:text="@string/message"
+                        android:text="Message"
                         android:textColor="@color/primary"
                         android:drawableStart="@drawable/ic_sms"
                         android:drawablePadding="8dp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                        app:strokeColor="@color/primary"
+                        app:strokeWidth="1dp"
+                        app:cornerRadius="24dp" />
 
                 </LinearLayout>
 
@@ -450,6 +594,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp"
+            android:paddingBottom="24dp"
             android:background="@color/white">
 
             <com.google.android.material.button.MaterialButton
@@ -457,11 +602,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:backgroundTint="@color/primary"
-                android:text="@string/book_now_request_visit"
+                android:text="Book Now / Request Visit"
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                style="@style/Widget.MaterialComponents.Button" />
+                app:cornerRadius="28dp" />
 
         </LinearLayout>
 
