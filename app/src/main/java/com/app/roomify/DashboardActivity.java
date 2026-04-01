@@ -162,15 +162,15 @@ public class DashboardActivity extends AppCompatActivity {
             if (itemId == R.id.nav_home) {
                 // Already on home
                 return true;
-            } else if (itemId == R.id.nav_search) {
-                startActivity(new Intent(DashboardActivity.this, MainActivity.class));
+            } else if (itemId == R.id.tab_menu) {
+                startActivity(new Intent(DashboardActivity.this, LocationMap.class));
                 return true;
             } else if (itemId == R.id.nav_bookings) {
                 Intent intent = new Intent(DashboardActivity.this, BookingRequestsActivity.class);
                 intent.putExtra("role", "tenant");
                 startActivity(intent);
                 return true;
-            } else if (itemId == R.id.nav_profile) {
+            } else if (itemId == R.id.tab_profile) {
                 startActivity(new Intent(DashboardActivity.this, ProfileActivity.class));
                 return true;
             }

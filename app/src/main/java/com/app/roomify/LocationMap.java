@@ -153,16 +153,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         listenToUserBookings();
 
-        contact = findViewById(R.id.contact);
 
-        contact.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent i = new Intent(LocationMap.this, ContactActivity.class );
-                startActivity(i);
-
-            }
-        });
 
         Log.d(TAG, "onCreate started");
 
