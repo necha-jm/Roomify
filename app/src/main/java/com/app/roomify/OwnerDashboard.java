@@ -194,10 +194,12 @@ public class OwnerDashboard extends AppCompatActivity {
         bottomNavigation.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
 
-            if (itemId == R.id.nav_home) {
+            if (itemId == R.id.tab_menu) {
+                Intent intent = new Intent(OwnerDashboard.this, LocationMap.class);
+                startActivity(intent);
                 return true;
             } else if (itemId == R.id.nav_bookings) {
-                Intent intent = new Intent(OwnerDashboard.this, BookingRequestsActivity.class);
+                Intent intent = new Intent(OwnerDashboard.this, BookingRequest.class);
                 intent.putExtra("role", "owner");
                 startActivity(intent);
                 return true;
