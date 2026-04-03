@@ -3,8 +3,11 @@ package com.app.roomify;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.location.Address;
 import android.location.Geocoder;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -27,6 +30,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
+import com.bumptech.glide.Glide;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.material.button.MaterialButton;
@@ -90,6 +94,13 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private MaterialButton btnDownloadVideo;
     private MaterialButton btnViewContractDoc;
     private MaterialButton btnDownloadContract;
+
+    // ==================== NEW VIDEO PREVIEW COMPONENTS ====================
+    private LinearLayout videoPreviewSection;
+    private ImageView ivVideoThumbnail;
+    private ImageView btnPlayVideoOverlay;
+    private MaterialButton btnPlayVideoFull;
+    private MaterialButton btnDownloadVideoFull;
 
     // ==================== DATA HOLDERS ====================
     private double roomLat = 0, roomLng = 0;
@@ -196,6 +207,13 @@ public class RoomDetailsActivity extends AppCompatActivity {
         btnViewContractDoc = findViewById(R.id.btnViewContractDoc);
         btnDownloadContract = findViewById(R.id.btnDownloadContract);
 
+        // ==================== NEW VIDEO PREVIEW COMPONENTS ====================
+        videoPreviewSection = findViewById(R.id.videoPreviewSection);
+        ivVideoThumbnail = findViewById(R.id.ivVideoThumbnail);
+        btnPlayVideoOverlay = findViewById(R.id.btnPlayVideoOverlay);
+        btnPlayVideoFull = findViewById(R.id.btnPlayVideoFull);
+        btnDownloadVideoFull = findViewById(R.id.btnDownloadVideoFull);
+
         // Media Components
         viewPagerImages = findViewById(R.id.viewPagerImages);
         imageIndicator = findViewById(R.id.imageIndicator);
@@ -218,12 +236,12 @@ public class RoomDetailsActivity extends AppCompatActivity {
         Log.d(TAG, "=== VERIFYING VIEWS ===");
         Log.d(TAG, "mediaActionsLayout: " + (mediaActionsLayout != null ? "FOUND" : "NULL"));
         Log.d(TAG, "videoActionsRow: " + (videoActionsRow != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "videoPreviewSection: " + (videoPreviewSection != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "ivVideoThumbnail: " + (ivVideoThumbnail != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnPlayVideoOverlay: " + (btnPlayVideoOverlay != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnPlayVideoFull: " + (btnPlayVideoFull != null ? "FOUND" : "NULL"));
+        Log.d(TAG, "btnDownloadVideoFull: " + (btnDownloadVideoFull != null ? "FOUND" : "NULL"));
         Log.d(TAG, "contractActionsRow: " + (contractActionsRow != null ? "FOUND" : "NULL"));
-        Log.d(TAG, "btnViewImages: " + (btnViewImages != null ? "FOUND" : "NULL"));
-        Log.d(TAG, "btnPlayVideo: " + (btnPlayVideo != null ? "FOUND" : "NULL"));
-        Log.d(TAG, "btnDownloadVideo: " + (btnDownloadVideo != null ? "FOUND" : "NULL"));
-        Log.d(TAG, "btnViewContractDoc: " + (btnViewContractDoc != null ? "FOUND" : "NULL"));
-        Log.d(TAG, "btnDownloadContract: " + (btnDownloadContract != null ? "FOUND" : "NULL"));
         Log.d(TAG, "=====================");
     }
 
@@ -255,12 +273,26 @@ public class RoomDetailsActivity extends AppCompatActivity {
         if (btnViewImages != null) {
             btnViewImages.setOnClickListener(v -> viewAllImages());
         }
+
+        // Video Play Listeners (Multiple ways to play video)
         if (btnPlayVideo != null) {
             btnPlayVideo.setOnClickListener(v -> playVideo());
         }
+        if (btnPlayVideoOverlay != null) {
+            btnPlayVideoOverlay.setOnClickListener(v -> playVideo());
+        }
+        if (btnPlayVideoFull != null) {
+            btnPlayVideoFull.setOnClickListener(v -> playVideo());
+        }
+
+        // Video Download Listeners
         if (btnDownloadVideo != null) {
             btnDownloadVideo.setOnClickListener(v -> downloadVideo());
         }
+        if (btnDownloadVideoFull != null) {
+            btnDownloadVideoFull.setOnClickListener(v -> downloadVideo());
+        }
+
         if (btnViewContractDoc != null) {
             btnViewContractDoc.setOnClickListener(v -> viewContract());
         }
@@ -511,6 +543,17 @@ public class RoomDetailsActivity extends AppCompatActivity {
                     room.getVideoUrl() != null &&
                     !room.getVideoUrl().isEmpty();
 
+            // Show/Hide Video Preview Section (NEW)
+            if (videoPreviewSection != null) {
+                videoPreviewSection.setVisibility(hasVideo ? View.VISIBLE : View.GONE);
+                if (hasVideo) {
+                    hasAnyMedia = true;
+                    // Load video thumbnail
+                    loadVideoThumbnail(room.getVideoUrl());
+                }
+            }
+
+            // Original Video Actions Row (keep for compatibility)
             if (videoActionsRow != null) {
                 videoActionsRow.setVisibility(hasVideo ? View.VISIBLE : View.GONE);
                 if (hasVideo) hasAnyMedia = true;
@@ -555,6 +598,32 @@ public class RoomDetailsActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error updating media buttons: " + e.getMessage());
         }
+    }
+
+    // ==================== NEW VIDEO THUMBNAIL METHODS ====================
+
+    private void loadVideoThumbnail(String videoUrl) {
+        if (ivVideoThumbnail == null) return;
+
+        // Show placeholder first
+        ivVideoThumbnail.setImageResource(R.drawable.ic_video_placeholder);
+
+        // Try to extract thumbnail from video URL
+        executorService.execute(() -> {
+            try {
+                // For remote video URLs, we can use MediaMetadataRetriever
+                // Note: This requires the video to be downloaded partially
+                // For now, we'll just use placeholder
+                // You can implement thumbnail extraction using Glide or other libraries
+
+                runOnUiThread(() -> {
+                    // Keep placeholder or try to load from custom thumbnail
+                    // Glide.with(this).load(videoUrl + "?thumbnail").into(ivVideoThumbnail);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to load video thumbnail: " + e.getMessage());
+            }
+        });
     }
 
     // ==================== MEDIA ACTION METHODS ====================

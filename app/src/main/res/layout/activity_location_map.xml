@@ -11,13 +11,12 @@
     tools:context=".MainActivity">
 
     <!-- Google Map Fragment -->
-
-    <!-- Modern Gradient Overlay for better visibility -->
     <fragment
         android:id="@+id/map"
         android:name="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
 
     <View
         android:layout_width="match_parent"
@@ -26,6 +25,20 @@
         android:alpha="0.6" />
 
     <!-- Enhanced Search Bar with Modern Design -->
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_location"
+        android:layout_width="37dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="@string/todo"
+        android:src="@drawable/ic_my_location"
+        app:backgroundTint="?attr/colorPrimary"
+        app:elevation="0dp"
+        app:fabSize="mini"
+        app:tint="@android:color/white" />
+
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/search_card"
         android:layout_width="match_parent"
@@ -73,17 +86,21 @@
                 android:fontFamily="sans-serif"
                 android:textColorHint="@color/text_secondary" />
 
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/fab_location"
-                android:layout_width="44dp"
+            <!-- NEW: Search Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_search_address"
+                android:layout_width="wrap_content"
                 android:layout_height="44dp"
-                android:layout_marginEnd="12dp"
-                android:contentDescription="@string/todo"
-                android:src="@drawable/ic_my_location"
+                android:layout_marginEnd="8dp"
+                android:text="Search"
+                android:textAllCaps="false"
+                android:fontFamily="sans-serif-medium"
+                android:textSize="14sp"
+                app:cornerRadius="22dp"
                 app:backgroundTint="?attr/colorPrimary"
-                app:tint="@android:color/white"
-                app:elevation="0dp"
-                app:fabSize="mini" />
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp" />
+
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -166,7 +183,6 @@
                             android:textSize="28sp"
                             android:textStyle="bold" />
 
-                        <!-- FIXED: Using AppCompatImageButton instead of MaterialButton -->
                         <androidx.appcompat.widget.AppCompatImageButton
                             android:id="@+id/btn_settings"
                             android:layout_width="48dp"
@@ -203,7 +219,7 @@
                         android:layout_marginBottom="36dp"
                         android:padding="4dp">
 
-                        <!-- Apartment Card - Enhanced -->
+                        <!-- Apartment Card -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/apartment_card"
                             android:layout_width="0dp"
@@ -244,7 +260,7 @@
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Add Room Card - Enhanced -->
+                        <!-- Add Room Card -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/addRoom_card"
                             android:layout_width="0dp"
@@ -285,7 +301,7 @@
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Language Card - Enhanced -->
+                        <!-- Language Card -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/language_card"
                             android:layout_width="0dp"
@@ -327,14 +343,12 @@
 
                     </GridLayout>
 
-
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
-                        <!-- UDSM Item - Enhanced -->
+                        <!-- UDSM Item -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -347,7 +361,7 @@
 
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Bus Office Item - Enhanced -->
+                        <!-- Bus Office Item -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -361,7 +375,7 @@
 
                     </LinearLayout>
 
-                    <!-- Language Selection (Hidden by default, shows on tap) - Enhanced -->
+                    <!-- Language Selection (Hidden by default) -->
                     <LinearLayout
                         android:id="@+id/language_selection"
                         android:layout_width="match_parent"
@@ -496,5 +510,23 @@
 
     </LinearLayout>
 
+    <!-- Loading Overlay -->
+    <View
+        android:id="@+id/overlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:background="#80000000" />
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/progressIndicator"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:visibility="gone"
+        android:indeterminate="true"
+        android:layout_gravity="center"
+        app:indicatorColor="?attr/colorPrimary"
+        app:trackThickness="4dp"
+        app:indicatorSize="48dp" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

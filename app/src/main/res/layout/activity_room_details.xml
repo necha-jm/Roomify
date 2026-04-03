@@ -286,7 +286,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Media Actions Card (NEW) -->
+        <!-- Media Actions Card (ENHANCED with Video Preview) -->
         <androidx.cardview.widget.CardView
             android:id="@+id/mediaActionsCard"
             android:layout_width="match_parent"
@@ -312,7 +312,90 @@
                     android:textStyle="bold"
                     android:layout_marginBottom="12dp" />
 
-                <!-- Video Actions Row -->
+                <!-- Video Preview Section (NEW) -->
+                <LinearLayout
+                    android:id="@+id/videoPreviewSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Video Tour"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"
+                        android:layout_marginBottom="8dp" />
+
+                    <!-- Video Thumbnail with Play Button Overlay -->
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="180dp"
+                        android:background="@color/grey_light"
+                        android:layout_marginBottom="8dp">
+
+                        <ImageView
+                            android:id="@+id/ivVideoThumbnail"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_video_placeholder" />
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#66000000" />
+
+                        <ImageView
+                            android:id="@+id/btnPlayVideoOverlay"
+                            android:layout_width="64dp"
+                            android:layout_height="64dp"
+                            android:layout_centerInParent="true"
+                            android:src="@drawable/ic_play_circle"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="Play Video" />
+
+                    </RelativeLayout>
+
+                    <!-- Video Actions Buttons -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnPlayVideoFull"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="8dp"
+                            android:text="Play Fullscreen"
+                            app:icon="@drawable/ic_play"
+                            app:iconGravity="textStart"
+                            android:textSize="14sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnDownloadVideoFull"
+                            android:layout_width="0dp"
+                            android:layout_height="40dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="8dp"
+                            android:text="Download Video"
+                            app:icon="@drawable/ic_download"
+                            app:iconGravity="textStart"
+                            android:textSize="14sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <!-- Original Video Actions Row (Keep for compatibility) -->
                 <LinearLayout
                     android:id="@+id/videoActionsRow"
                     android:layout_width="match_parent"

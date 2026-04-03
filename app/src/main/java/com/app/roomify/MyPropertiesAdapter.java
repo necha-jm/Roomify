@@ -51,7 +51,7 @@ public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapte
             holder.tvTitle.setText(room.getTitle());
             holder.tvPrice.setText(room.getFormattedPrice());
             holder.tvLocation.setText(room.getLocationSummary());
-            holder.tvBookingsCount.setText(room.getBookingsText());
+
 
             // Set availability badge
             if (room.isAvailable()) {

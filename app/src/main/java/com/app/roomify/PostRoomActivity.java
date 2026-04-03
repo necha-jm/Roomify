@@ -46,6 +46,9 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -53,6 +56,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCallback {
 
@@ -91,6 +96,13 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private String contractFileName = "";
     private Marker locationMarker;
 
+    // Upload tracking
+    private boolean videoUploadComplete = false;
+    private boolean contractUploadComplete = false;
+    private String uploadedVideoUrl = "";
+    private String uploadedContractUrl = "";
+    private List<String> uploadedImageUrls = new ArrayList<>();
+
     // Property types
     private String[] propertyTypes = {"Apartment", "Single Room", "Studio", "House", "Shared Room", "Commercial"};
 
@@ -100,6 +112,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     // Firebase
     private FirebaseFirestore db;
+    private FirebaseStorage storage;
     private FirebaseAuth mAuth;
     private String currentRoomId;
     private String authenticatedUserId;
@@ -110,6 +123,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance();
+        storage = FirebaseStorage.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
         // Check if user is logged in
@@ -215,15 +229,11 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             googleMap.getUiSettings().setCompassEnabled(true);
             googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
-            // Set default location to Dar es Salaam
             LatLng darEsSalaam = new LatLng(-6.792354, 39.208328);
             selectedLatLng = darEsSalaam;
             googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(darEsSalaam, 12f));
-
-            // Add marker for Dar es Salaam
             addMarker(darEsSalaam, "Dar es Salaam");
 
-            // Enable location if permission granted
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                     == PackageManager.PERMISSION_GRANTED) {
                 googleMap.setMyLocationEnabled(true);
@@ -233,7 +243,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         LOCATION_PERMISSION_REQUEST_CODE);
             }
 
-            // Set map click listener
             googleMap.setOnMapClickListener(latLng -> {
                 selectedLatLng = latLng;
                 addMarker(latLng, "Selected Location");
@@ -247,18 +256,13 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     private void addMarker(LatLng latLng, String title) {
         if (googleMap == null) return;
-
         try {
-            if (locationMarker != null) {
-                locationMarker.remove();
-            }
+            if (locationMarker != null) locationMarker.remove();
             locationMarker = googleMap.addMarker(new MarkerOptions()
                     .position(latLng)
                     .title(title)
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
-            if (locationMarker != null) {
-                locationMarker.showInfoWindow();
-            }
+            if (locationMarker != null) locationMarker.showInfoWindow();
         } catch (Exception e) {
             Log.e(TAG, "Error adding marker: " + e.getMessage());
         }
@@ -277,7 +281,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     private void getAddressFromLocation(LatLng latLng) {
         if (latLng == null) return;
-
         tvSelectedAddress.setText("Getting address...");
 
         new Thread(() -> {
@@ -360,7 +363,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     private void setupAmenitiesChips() {
         if (chipGroupAmenities == null) return;
-
         chipGroupAmenities.removeAllViews();
 
         for (String amenity : amenitiesList) {
@@ -433,6 +435,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         if (selectedVideoUri != null) {
                             videoFileName = getFileName(selectedVideoUri);
                             updateSelectedFilesInfo();
+                            Toast.makeText(this, "✓ Video selected: " + videoFileName, Toast.LENGTH_LONG).show();
                         }
                         break;
                     case CONTRACT_PICK_REQUEST_CODE:
@@ -440,6 +443,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         if (selectedContractUri != null) {
                             contractFileName = getFileName(selectedContractUri);
                             updateSelectedFilesInfo();
+                            Toast.makeText(this, "✓ Contract selected: " + contractFileName, Toast.LENGTH_LONG).show();
                         }
                         break;
                 }
@@ -506,7 +510,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         if (tvSelectedFiles == null) return;
 
         StringBuilder info = new StringBuilder();
-
         if (!selectedImageUris.isEmpty()) {
             info.append(selectedImageUris.size()).append(" photo(s)");
         }
@@ -528,7 +531,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void validateAndSubmit() {
-        // Verify user is still authenticated
         FirebaseUser currentUser = mAuth.getCurrentUser();
         if (currentUser == null) {
             Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
@@ -550,81 +552,46 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
         if (TextUtils.isEmpty(title)) {
             etRoomTitle.setError("Title is required");
-            etRoomTitle.requestFocus();
             return;
         }
-
         if (TextUtils.isEmpty(description)) {
             etDescription.setError("Description is required");
-            etDescription.requestFocus();
             return;
         }
-
         if (TextUtils.isEmpty(priceStr)) {
             etPrice.setError("Price is required");
-            etPrice.requestFocus();
             return;
         }
-
         if (TextUtils.isEmpty(phone)) {
             etContactPhone.setError("Contact phone is required");
-            etContactPhone.requestFocus();
             return;
         }
-
         if (TextUtils.isEmpty(ownerName)) {
             etOwnerName.setError("Owner name is required");
-            etOwnerName.requestFocus();
             return;
         }
 
-        // Get location based on selected mode
+        // Location validation
         int checkedId = locationToggleGroup != null ? locationToggleGroup.getCheckedButtonId() : R.id.btnMapLocation;
-
         if (checkedId == R.id.btnMapLocation) {
-            // Map mode - use selected location from map
             if (selectedLatLng == null) {
                 showError("Please select a location on the map");
                 return;
             }
-            // Make sure we have an address
-            if (TextUtils.isEmpty(selectedAddress)) {
-                getAddressFromLocation(selectedLatLng);
-                // Wait a moment for address to be fetched
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
         } else {
-            // Manual mode - get coordinates from inputs
             String latStr = etLatitude.getText().toString().trim();
             String lngStr = etLongitude.getText().toString().trim();
-            String manualAddress = etManualAddress.getText().toString().trim();
-
             if (TextUtils.isEmpty(latStr) || TextUtils.isEmpty(lngStr)) {
                 showError("Please enter valid latitude and longitude coordinates");
                 return;
             }
-
             try {
                 double lat = Double.parseDouble(latStr);
                 double lng = Double.parseDouble(lngStr);
                 selectedLatLng = new LatLng(lat, lng);
-
-                // Use manual address if provided, otherwise get from coordinates
+                String manualAddress = etManualAddress.getText().toString().trim();
                 if (!TextUtils.isEmpty(manualAddress)) {
                     selectedAddress = manualAddress;
-                } else {
-                    // Try to get address from coordinates
-                    getAddressFromLocation(selectedLatLng);
-                    // Wait a moment for address to be fetched
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
                 }
             } catch (NumberFormatException e) {
                 showError("Invalid coordinates format");
@@ -642,43 +609,23 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         if (!TextUtils.isEmpty(etRoomsCount.getText().toString())) {
             roomsCount = Integer.parseInt(etRoomsCount.getText().toString());
         }
-
         int bathroomsCount = 1;
         if (!TextUtils.isEmpty(etBathroomsCount.getText().toString())) {
             bathroomsCount = Integer.parseInt(etBathroomsCount.getText().toString());
         }
-
         String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
         String email = etContactEmail.getText().toString().trim();
-
         double area = 0;
         if (!TextUtils.isEmpty(etArea.getText().toString())) {
             try {
                 area = Double.parseDouble(etArea.getText().toString());
-            } catch (NumberFormatException e) {
-                // Ignore, area remains 0
-            }
+            } catch (NumberFormatException e) {}
         }
-
         String rules = etRules.getText().toString().trim();
 
         showLoading(true);
-        saveRoomToFirestore(title, description, price, propertyType, phone, email,
-                roomsCount, bathroomsCount, ownerName, area, rules);
-    }
 
-    private void saveRoomToFirestore(String title, String description, double price,
-                                     String propertyType, String phone, String email,
-                                     int roomsCount, int bathroomsCount, String ownerName,
-                                     double area, String rules) {
-
-        // CRITICAL: Check if location is set
-        if (selectedLatLng == null) {
-            showLoading(false);
-            showError("Location not set. Please select a location on the map or enter coordinates.");
-            return;
-        }
-
+        // First create room document
         currentRoomId = db.collection("rooms").document().getId();
 
         Map<String, Object> room = new HashMap<>();
@@ -695,8 +642,10 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         room.put("ownerName", ownerName);
         room.put("amenities", selectedAmenities);
         room.put("imageCount", selectedImageUris.size());
-        room.put("hasVideo", selectedVideoUri != null);
-        room.put("hasContract", selectedContractUri != null);
+        room.put("hasVideo", false);  // Will update after upload
+        room.put("hasContract", false); // Will update after upload
+        room.put("videoUrl", "");
+        room.put("contractUrl", "");
         room.put("createdAt", System.currentTimeMillis());
         room.put("isAvailable", true);
         room.put("roomsCount", roomsCount);
@@ -708,36 +657,131 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         if (!TextUtils.isEmpty(rules)) {
             List<String> rulesList = new ArrayList<>();
             if (rules.contains(",")) {
-                String[] parts = rules.split(",");
-                for (String part : parts) {
+                for (String part : rules.split(",")) {
                     String trimmed = part.trim();
-                    if (!trimmed.isEmpty()) {
-                        rulesList.add(trimmed);
-                    }
+                    if (!trimmed.isEmpty()) rulesList.add(trimmed);
                 }
             } else {
                 rulesList.add(rules);
             }
             room.put("rules", rulesList);
         } else {
-            room.put("rules", new ArrayList<String>());
+            room.put("rules", new ArrayList<>());
         }
-
-        Log.d(TAG, "Saving room with location: " + selectedLatLng.latitude + ", " + selectedLatLng.longitude);
-        Log.d(TAG, "Address: " + selectedAddress);
 
         db.collection("rooms").document(currentRoomId)
                 .set(room)
                 .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "Room saved successfully with ID: " + currentRoomId);
-                    sendNewRoomNotification();
-                    showSuccess();
+                    Log.d(TAG, "Room created, starting uploads...");
+                    startUploadingMedia();
                 })
                 .addOnFailureListener(e -> {
                     showLoading(false);
-                    showError("Failed to post: " + e.getMessage());
-                    Log.e(TAG, "Firestore error: " + e.getMessage(), e);
+                    showError("Failed to create room: " + e.getMessage());
                 });
+    }
+
+    private void startUploadingMedia() {
+        int totalUploads = selectedImageUris.size() +
+                (selectedVideoUri != null ? 1 : 0) +
+                (selectedContractUri != null ? 1 : 0);
+
+        if (totalUploads == 0) {
+            finishPosting();
+            return;
+        }
+
+        AtomicInteger completedUploads = new AtomicInteger(0);
+
+        // Upload images
+        for (int i = 0; i < selectedImageUris.size(); i++) {
+            final int index = i;
+            Uri imageUri = selectedImageUris.get(i);
+            StorageReference imageRef = storage.getReference()
+                    .child("rooms/" + currentRoomId + "/images/image_" + System.currentTimeMillis() + "_" + index + ".jpg");
+
+            imageRef.putFile(imageUri)
+                    .addOnSuccessListener(taskSnapshot -> {
+                        imageRef.getDownloadUrl().addOnSuccessListener(uri -> {
+                            db.collection("rooms").document(currentRoomId)
+                                    .update("images", com.google.firebase.firestore.FieldValue.arrayUnion(uri.toString()))
+                                    .addOnSuccessListener(aVoid -> {
+                                        int completed = completedUploads.incrementAndGet();
+                                        if (completed == totalUploads) {
+                                            finishPosting();
+                                        }
+                                    });
+                        });
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Image upload failed: " + e.getMessage());
+                        int completed = completedUploads.incrementAndGet();
+                        if (completed == totalUploads) finishPosting();
+                    });
+        }
+
+        // Upload video
+        if (selectedVideoUri != null) {
+            StorageReference videoRef = storage.getReference()
+                    .child("rooms/" + currentRoomId + "/video/video_" + System.currentTimeMillis() + ".mp4");
+
+            videoRef.putFile(selectedVideoUri)
+                    .addOnSuccessListener(taskSnapshot -> {
+                        videoRef.getDownloadUrl().addOnSuccessListener(uri -> {
+                            Map<String, Object> updates = new HashMap<>();
+                            updates.put("videoUrl", uri.toString());
+                            updates.put("hasVideo", true);
+
+                            db.collection("rooms").document(currentRoomId)
+                                    .update(updates)
+                                    .addOnSuccessListener(aVoid -> {
+                                        Log.d(TAG, "✓ Video uploaded: " + uri.toString());
+                                        int completed = completedUploads.incrementAndGet();
+                                        if (completed == totalUploads) finishPosting();
+                                    });
+                        });
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Video upload failed: " + e.getMessage());
+                        int completed = completedUploads.incrementAndGet();
+                        if (completed == totalUploads) finishPosting();
+                    });
+        }
+
+        // Upload contract
+        if (selectedContractUri != null) {
+            StorageReference contractRef = storage.getReference()
+                    .child("rooms/" + currentRoomId + "/contracts/contract_" + System.currentTimeMillis() + ".pdf");
+
+            contractRef.putFile(selectedContractUri)
+                    .addOnSuccessListener(taskSnapshot -> {
+                        contractRef.getDownloadUrl().addOnSuccessListener(uri -> {
+                            Map<String, Object> updates = new HashMap<>();
+                            updates.put("contractUrl", uri.toString());
+                            updates.put("hasContract", true);
+
+                            db.collection("rooms").document(currentRoomId)
+                                    .update(updates)
+                                    .addOnSuccessListener(aVoid -> {
+                                        Log.d(TAG, "✓ Contract uploaded: " + uri.toString());
+                                        int completed = completedUploads.incrementAndGet();
+                                        if (completed == totalUploads) finishPosting();
+                                    });
+                        });
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Contract upload failed: " + e.getMessage());
+                        int completed = completedUploads.incrementAndGet();
+                        if (completed == totalUploads) finishPosting();
+                    });
+        }
+    }
+
+    private void finishPosting() {
+        runOnUiThread(() -> {
+            sendNewRoomNotification();
+            showSuccess();
+        });
     }
 
     private void showSuccess() {
@@ -791,15 +835,9 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
     private void showLoading(boolean show) {
         runOnUiThread(() -> {
-            if (overlayView != null) {
-                overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
-            }
-            if (progressIndicator != null) {
-                progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
-            }
-            if (btnSubmitRoom != null) {
-                btnSubmitRoom.setEnabled(!show);
-            }
+            if (overlayView != null) overlayView.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (progressIndicator != null) progressIndicator.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (btnSubmitRoom != null) btnSubmitRoom.setEnabled(!show);
         });
     }
 
@@ -842,6 +880,16 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     protected void onPause() {
         super.onPause();
         if (googleMap != null) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return;
+            }
             googleMap.setMyLocationEnabled(false);
         }
     }
