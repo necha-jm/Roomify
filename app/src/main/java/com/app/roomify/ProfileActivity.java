@@ -1,38 +1,49 @@
 package com.app.roomify;
+
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.google.android.gms.auth.api.signin.GoogleSignIn;
-import com.google.android.gms.auth.api.signin.GoogleSignInClient;
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
+import com.bumptech.glide.Glide;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.firebase.auth.FirebaseAuth;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class ProfileActivity extends AppCompatActivity {
 
-    private FirebaseAuth mAuth;
-    private GoogleSignInClient googleSignInClient;
+    private static final int PICK_IMAGE = 1;
+    private static final String TAG = "ProfileActivity";
 
+    // Views
     private BottomNavigationView bottom_nav;
-
     private LinearLayout logout;
-
-    private TextView profileName;
-
+    private TextView profileName, profileEmail, profileRole, profileMemberSince;
+    private TextView tvBookingsCount, tvPropertiesCount, tvReviewsCount;
     private ImageView profileImage;
-
     private Button request;
     private FloatingActionButton fabAddPhoto;
-    private static final int PICK_IMAGE = 1;
+
+    // Backend Components
+    private TokenManager tokenManager;
+    private APIInterface apiInterface;
+    private User currentUser;
+    private long currentUserId = -1L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,101 +52,300 @@ public class ProfileActivity extends AppCompatActivity {
         setContentView(R.layout.activity_profile);
 
         initialization();
-
-        //listner action
-        listerner();
-
+        loadUserProfile();
+        listener();
+        loadUserStats();
     }
 
-    private void initialization(){
-//firebase
-        mAuth = FirebaseAuth.getInstance();
+    private void initialization() {
+        // Initialize backend components
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
 
+        // Get current user
+        currentUser = tokenManager.getUser();
+        if (currentUser != null) {
+            currentUserId = currentUser.getId();
+        }
+
+        // Initialize views
         logout = findViewById(R.id.logout);
-
-
-        // Initialize GoogleSignInClient
-        googleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN);
-
         bottom_nav = findViewById(R.id.bottom_nav);
         profileName = findViewById(R.id.profileName);
         profileImage = findViewById(R.id.profileImage);
         fabAddPhoto = findViewById(R.id.fabAddPhoto);
         request = findViewById(R.id.request);
 
+        // Stats views
+        tvBookingsCount = findViewById(R.id.tvBookingsCount);
 
-        if (mAuth.getCurrentUser() != null) {
-            String name = mAuth.getCurrentUser().getDisplayName();
-            String email = mAuth.getCurrentUser().getEmail();
 
-            if (name != null && !name.isEmpty()) {
-                profileName.setText(name); // Google users
-            } else if (email != null) {
-                profileName.setText(email); // Email users fallback
+        // Set default bottom navigation selection
+        if (bottom_nav != null) {
+            bottom_nav.setSelectedItemId(R.id.tab_profile);
+        }
+    }
+
+    private void loadUserProfile() {
+        if (currentUser != null) {
+            displayUserInfo(currentUser);
+        } else if (tokenManager.isLoggedIn()) {
+            fetchUserFromServer();
+        } else {
+            showDefaultUserInfo();
+            Toast.makeText(this, "Please login to view profile", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void fetchUserFromServer() {
+        String token = tokenManager.getToken();
+        if (token == null) {
+            showDefaultUserInfo();
+            return;
+        }
+
+        Call<com.app.roomify.models.AuthResponse> call = apiInterface.getCurrentUser("Bearer " + token);
+        call.enqueue(new Callback<com.app.roomify.models.AuthResponse>() {
+            @Override
+            public void onResponse(Call<com.app.roomify.models.AuthResponse> call,
+                                   Response<com.app.roomify.models.AuthResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    com.app.roomify.models.AuthResponse authResponse = response.body();
+                    if (authResponse.isSuccess() && authResponse.getUser() != null) {
+                        currentUser = authResponse.getUser();
+                        currentUserId = currentUser.getId();
+                        tokenManager.saveUser(currentUser);
+                        displayUserInfo(currentUser);
+                    } else {
+                        showDefaultUserInfo();
+                    }
+                } else {
+                    showDefaultUserInfo();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<com.app.roomify.models.AuthResponse> call, Throwable t) {
+                showDefaultUserInfo();
+                Toast.makeText(ProfileActivity.this, "Failed to load profile: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void displayUserInfo(User user) {
+        if (user == null) {
+            showDefaultUserInfo();
+            return;
+        }
+
+        // Display name
+        String name = user.getName();
+        if (name != null && !name.isEmpty()) {
+            profileName.setText(name);
+        } else {
+            String email = user.getEmail();
+            profileName.setText(email != null ? email.split("@")[0] : "User");
+        }
+
+        // Display email
+        if (profileEmail != null) {
+            String email = user.getEmail();
+            profileEmail.setText(email != null && !email.isEmpty() ? email : "No email provided");
+            profileEmail.setVisibility(View.VISIBLE);
+        }
+
+        // Display role
+        if (profileRole != null) {
+            String role = user.getRole();
+            if (role != null && !role.isEmpty()) {
+                String displayRole = role.substring(0, 1).toUpperCase() + role.substring(1).toLowerCase();
+                profileRole.setText(displayRole);
+                profileRole.setVisibility(View.VISIBLE);
+
+                // Change role badge color based on role
+                if ("owner".equalsIgnoreCase(role)) {
+                    profileRole.setBackgroundResource(R.drawable.role_badge_owner);
+                } else {
+                    profileRole.setBackgroundResource(R.drawable.role_badge_tenant);
+                }
             } else {
-                profileName.setText("Guest User");
+                profileRole.setVisibility(View.GONE);
             }
         }
 
+        // Member since - Since User model doesn't have createdAt, use a default or hide
+        if (profileMemberSince != null) {
+            // You can add a createdAt field to User model or use a default
+            profileMemberSince.setVisibility(View.GONE);
+        }
 
+        // Load profile image - Using default for now
+        if (profileImage != null) {
+            profileImage.setImageResource(R.drawable.ic_profile);
+        }
+    }
+
+    private void showDefaultUserInfo() {
+        profileName.setText("User");
+        if (profileEmail != null) {
+            profileEmail.setText("Not logged in");
+            profileEmail.setVisibility(View.VISIBLE);
+        }
+        if (profileRole != null) profileRole.setVisibility(View.GONE);
+        if (profileMemberSince != null) profileMemberSince.setVisibility(View.GONE);
+        if (profileImage != null) profileImage.setImageResource(R.drawable.ic_profile);
+    }
+
+    private void loadUserStats() {
+        if (currentUserId == -1) {
+            setDefaultStats();
+            return;
+        }
+
+        // Load bookings count
+        Call<com.app.roomify.models.ApiResponse<java.util.List<com.app.roomify.models.BookingResponse>>> bookingsCall =
+                apiInterface.getUserBookings(currentUserId);
+        bookingsCall.enqueue(new Callback<com.app.roomify.models.ApiResponse<java.util.List<com.app.roomify.models.BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<com.app.roomify.models.ApiResponse<java.util.List<com.app.roomify.models.BookingResponse>>> call,
+                                   Response<com.app.roomify.models.ApiResponse<java.util.List<com.app.roomify.models.BookingResponse>>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    java.util.List<com.app.roomify.models.BookingResponse> bookings = response.body().getData();
+                    int count = bookings != null ? bookings.size() : 0;
+                    if (tvBookingsCount != null) {
+                        tvBookingsCount.setText(String.valueOf(count));
+                    }
+                } else {
+                    setDefaultStats();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<com.app.roomify.models.ApiResponse<java.util.List<com.app.roomify.models.BookingResponse>>> call, Throwable t) {
+                setDefaultStats();
+            }
+        });
+
+        // Load properties count (only for owners)
+        if (currentUser != null && "owner".equals(currentUser.getRole())) {
+            Call<java.util.List<Room>> roomsCall = apiInterface.getRoomsByOwner(currentUserId);
+            roomsCall.enqueue(new Callback<java.util.List<Room>>() {
+                @Override
+                public void onResponse(Call<java.util.List<Room>> call, Response<java.util.List<Room>> response) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        int count = response.body().size();
+                        if (tvPropertiesCount != null) {
+                            tvPropertiesCount.setText(String.valueOf(count));
+                        }
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<java.util.List<Room>> call, Throwable t) {
+                    if (tvPropertiesCount != null) tvPropertiesCount.setText("0");
+                }
+            });
+        } else {
+            if (tvPropertiesCount != null) tvPropertiesCount.setText("0");
+        }
+    }
+
+    private void setDefaultStats() {
+        if (tvBookingsCount != null) tvBookingsCount.setText("0");
+        if (tvPropertiesCount != null) tvPropertiesCount.setText("0");
+        if (tvReviewsCount != null) tvReviewsCount.setText("0");
+    }
+
+    private void listener() {
+        // Bottom navigation
+        if (bottom_nav != null) {
+            bottom_nav.setOnItemSelectedListener(menuItem -> {
+                int itemId = menuItem.getItemId();
+
+                if (itemId == R.id.tab_menu) {
+                    startActivity(new Intent(this, LocationMap.class));
+                    finish();
+                    return true;
+                } else if (itemId == R.id.nav_explore) {
+                    // Navigate to dashboard based on role
+                    if (currentUser != null && "owner".equals(currentUser.getRole())) {
+                        startActivity(new Intent(this, OwnerDashboard.class));
+                    } else {
+                        startActivity(new Intent(this, DashboardActivity.class));
+                    }
+                    return true;
+                } else if (itemId == R.id.tab_profile) {
+                    // Already on profile
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        // Logout button
+        if (logout != null) {
+            logout.setOnClickListener(v -> {
+                // Clear session
+                tokenManager.clear();
+                Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show();
+                Intent intent = new Intent(this, LoginActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(intent);
+                finish();
+            });
+        }
+
+        // Add photo button
+        if (fabAddPhoto != null) {
+            fabAddPhoto.setOnClickListener(v -> openGallery());
+        }
+
+        // Request button - navigate to booking requests
+        if (request != null) {
+            request.setOnClickListener(v -> {
+                Intent intent = new Intent(this, BookingRequestsActivity.class);
+                if (currentUser != null && "owner".equals(currentUser.getRole())) {
+                    intent.putExtra("role", "owner");
+                } else {
+                    intent.putExtra("role", "tenant");
+                }
+                startActivity(intent);
+            });
+        }
+    }
+
+    private void openGallery() {
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType("image/*");
+        startActivityForResult(intent, PICK_IMAGE);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+        if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri imageUri = data.getData();
             profileImage.setImageURI(imageUri);
+
+            // TODO: Upload profile image to server
+            Toast.makeText(this, "Profile image updated locally", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void listerner(){
-        //item
-
-        bottom_nav.setOnItemSelectedListener(menuItem -> {
-            int itemId = menuItem.getItemId();
-
-            if (itemId == R.id.tab_menu) {
-                Intent i = new Intent(this, LocationMap.class);
-                startActivity(i);
-                return true;
-            }
-            else if (itemId == R.id.nav_explore) {
-                // You were opening ProfileActivity again - fix this
-                Intent intent = new Intent(this, RoomDetailsActivity.class); // Change to your Explore activity
-                startActivity(intent);
-                return true;
-            }
-            else if (itemId == R.id.tab_profile) {
-                // Already on ProfileActivity, don't restart it
-                // Just return true to indicate it's handled
-                return true;
-            }
-
-            return false;
-        });
-
-        if(logout != null){
-            logout.setOnClickListener(v -> {
-                AuthManager.logoutUser(this, mAuth, googleSignInClient);
-
-            });
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Refresh user data
+        loadUserProfile();
+        loadUserStats();
+        if (bottom_nav != null) {
+            bottom_nav.setSelectedItemId(R.id.tab_profile);
         }
-
-        fabAddPhoto.setOnClickListener(v -> openGallery());
-        request.setOnClickListener(v -> {
-            // In your owner dashboard
-            Intent userIntent = new Intent(this, BookingRequestsActivity.class);
-            userIntent.putExtra("role", "tenant");
-            startActivity(userIntent);
-        });
-
     }
 
-    private void openGallery(){
-        Intent intent = new Intent(Intent.ACTION_PICK);
-        intent.setType("image/*");
-        startActivityForResult(intent, PICK_IMAGE);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 }

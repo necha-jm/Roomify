@@ -9,19 +9,21 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.app.roomify.models.BookingResponse;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class PendingRequestAdapter extends RecyclerView.Adapter<PendingRequestAdapter.MyHolderView> {
 
-    private List<BookingRequest> requests;
+    private List<BookingResponse> requests;
     private final OnRequestActionListener listener;
 
     public interface OnRequestActionListener {
-        void onAction(BookingRequest request, String action);
+        void onAction(BookingResponse request, String action);
     }
 
-    public PendingRequestAdapter(List<BookingRequest> requests, OnRequestActionListener listener) {
+    public PendingRequestAdapter(List<BookingResponse> requests, OnRequestActionListener listener) {
         this.requests = requests != null ? requests : new ArrayList<>();
         this.listener = listener;
     }
@@ -38,13 +40,13 @@ public class PendingRequestAdapter extends RecyclerView.Adapter<PendingRequestAd
     public void onBindViewHolder(@NonNull MyHolderView holder, int position) {
         if (requests == null || position >= requests.size()) return;
 
-        BookingRequest request = requests.get(position);
+        BookingResponse request = requests.get(position);
 
-        // Set data
-        holder.tvPropertyTitle.setText(getSafeString(request.getRoomTitle(), "Unknown Property"));
-        holder.tvTenantName.setText(getSafeString(request.getUserName(), "Unknown User"));
-        holder.tvPhone.setText(getSafeString(request.getUserPhone(), "No phone"));
-        holder.tvBookingDate.setText(getSafeString(request.getBookingDate(), "Date not set"));
+        // Set data using BookingResponse fields
+        holder.tvPropertyTitle.setText("Room #" + request.getRoomId());
+        holder.tvTenantName.setText("Tenant ID: " + request.getUserId());
+        holder.tvPhone.setText("Phone: Not available");
+        holder.tvBookingDate.setText(request.getStartDate() + " to " + request.getEndDate());
 
         // Set click listeners for buttons
         holder.btnAccept.setOnClickListener(v -> {
@@ -69,7 +71,7 @@ public class PendingRequestAdapter extends RecyclerView.Adapter<PendingRequestAd
         return requests != null ? requests.size() : 0;
     }
 
-    public void setRequests(List<BookingRequest> pendingRequests) {
+    public void setRequests(List<BookingResponse> pendingRequests) {
         this.requests.clear();
         this.requests.addAll(pendingRequests);
         notifyDataSetChanged();

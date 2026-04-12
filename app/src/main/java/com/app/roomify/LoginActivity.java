@@ -1,24 +1,24 @@
 package com.app.roomify;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.View;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 
-import com.google.android.gms.auth.api.signin.GoogleSignIn;
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
-import com.google.android.gms.auth.api.signin.GoogleSignInClient;
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.app.roomify.models.AuthResponse;
+import com.app.roomify.models.ForgotPasswordRequest;
+import com.app.roomify.models.GoogleLoginRequest;
+import com.app.roomify.models.LoginRequest;
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
+import com.google.android.gms.auth.api.signin.*;
 import com.google.android.gms.common.SignInButton;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
@@ -26,23 +26,22 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.auth.AuthCredential;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.auth.GoogleAuthProvider;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class LoginActivity extends AppCompatActivity {
 
     private static final int RC_SIGN_IN = 100;
     private static final String TAG = "LoginActivity";
 
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore db;
+    // Backend components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
     private GoogleSignInClient googleSignInClient;
 
-    // Views
+    // UI Components
     private TextInputLayout emailLayout, passwordLayout;
     private TextInputEditText emailEditText, passwordEditText;
     private MaterialButton btnSignIn;
@@ -53,40 +52,33 @@ public class LoginActivity extends AppCompatActivity {
     private CardView cardView;
     private View loadingOverlay;
 
-    private String selectedRole = "tenant"; // Default role
+    private String selectedRole = "tenant";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        // Initialize Firebase
-        mAuth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
+        // Initialize backend components
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
 
-
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-
-        if (currentUser != null) {
-            // User already logged in → fetch role and go correctly
-            checkUserAndRedirect(currentUser);
+        // Check if already logged in
+        if (tokenManager.isLoggedIn()) {
+            User user = tokenManager.getUser();
+            if (user != null && user.getRole() != null) {
+                navigateBasedOnRole(user.getRole());
+                return;
+            }
         }
 
         // Initialize views
         initViews();
-
-        // Set up role selection
         setupRoleSelection();
-
-        // Setup animations
         setupAnimations();
-
-        // Configure Google Sign-In
         configureGoogleSignIn();
-
-        // Setup click listeners
         setupClickListeners();
-
     }
 
     private void initViews() {
@@ -102,38 +94,32 @@ public class LoginActivity extends AppCompatActivity {
         signUpButton = findViewById(R.id.Signup);
         googleButton = findViewById(R.id.Google);
         cardView = findViewById(R.id.cardView);
-        loadingOverlay = findViewById(R.id.loadingOverlay); // Make sure you have this in your layout
+        loadingOverlay = findViewById(R.id.loadingOverlay);
     }
 
     private void setupRoleSelection() {
-        // Set tenant as default checked
         chipTenantLogin.setChecked(true);
         selectedRole = "tenant";
         tvRoleHint.setText("You are logging in as a Tenant");
 
-        // Tenant selected
         chipTenantLogin.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 selectedRole = "tenant";
                 chipOwnerLogin.setChecked(false);
                 tvRoleHint.setText("You are logging in as a Tenant");
-                tvRoleHint.setTextColor(getColor(R.color.primary_green));
             }
         });
 
-        // Owner selected
         chipOwnerLogin.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 selectedRole = "owner";
                 chipTenantLogin.setChecked(false);
                 tvRoleHint.setText("You are logging in as an Owner");
-                tvRoleHint.setTextColor(getColor(R.color.primary_green));
             }
         });
     }
 
     private void setupAnimations() {
-        // Fade in animation for card view
         cardView.setAlpha(0f);
         cardView.setTranslationY(50f);
         cardView.animate()
@@ -141,13 +127,6 @@ public class LoginActivity extends AppCompatActivity {
                 .translationY(0f)
                 .setDuration(800)
                 .start();
-
-        // Scale animation for logo
-        View logo = findViewById(R.id.logo);
-        if (logo != null) {
-            Animation scaleAnimation = AnimationUtils.loadAnimation(this, android.R.anim.fade_in);
-            logo.startAnimation(scaleAnimation);
-        }
     }
 
     private void configureGoogleSignIn() {
@@ -159,8 +138,6 @@ public class LoginActivity extends AppCompatActivity {
                     .build();
 
             googleSignInClient = GoogleSignIn.getClient(this, gso);
-
-            // Customize Google Sign-In button
             googleButton.setSize(SignInButton.SIZE_WIDE);
         } catch (Exception e) {
             Log.e(TAG, "Google Sign-In config error", e);
@@ -169,19 +146,16 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void setupClickListeners() {
-        // Sign In button
         btnSignIn.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(this::signInWithEmailAndPassword, 200);
         });
 
-        // Guest button
         guestButton.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(this::signInAsGuest, 200);
         });
 
-        // Sign Up button
         signUpButton.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(() -> {
@@ -190,13 +164,11 @@ public class LoginActivity extends AppCompatActivity {
             }, 200);
         });
 
-        // Google Sign-In button
         googleButton.setOnClickListener(v -> {
             animateButton(v);
             new Handler().postDelayed(this::signInWithGoogle, 200);
         });
 
-        // Forgot password
         TextView forgotPassword = findViewById(R.id.forgotPassword);
         if (forgotPassword != null) {
             forgotPassword.setOnClickListener(v -> forgotPassword());
@@ -208,16 +180,11 @@ public class LoginActivity extends AppCompatActivity {
                 .scaleX(0.95f)
                 .scaleY(0.95f)
                 .setDuration(100)
-                .setListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        button.animate()
-                                .scaleX(1f)
-                                .scaleY(1f)
-                                .setDuration(100)
-                                .start();
-                    }
-                })
+                .withEndAction(() -> button.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(100)
+                        .start())
                 .start();
     }
 
@@ -225,7 +192,6 @@ public class LoginActivity extends AppCompatActivity {
         String email = emailEditText.getText().toString().trim();
         String password = passwordEditText.getText().toString().trim();
 
-        // Validate inputs
         if (email.isEmpty()) {
             emailLayout.setError("Email is required");
             emailLayout.requestFocus();
@@ -242,108 +208,104 @@ public class LoginActivity extends AppCompatActivity {
             passwordLayout.setError(null);
         }
 
-        // Show loading
         showLoading(true);
 
-        mAuth.signInWithEmailAndPassword(email, password)
-                .addOnCompleteListener(this, task -> {
-                    showLoading(false);
+        LoginRequest request = new LoginRequest(email, password, selectedRole);
 
-                    if (task.isSuccessful()) {
-                        Log.d(TAG, "signInWithEmail:success");
+        Call<AuthResponse> call = apiInterface.login(request);
+        call.enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                showLoading(false);
 
-                        FirebaseUser user = mAuth.getCurrentUser();
+                if (response.isSuccessful() && response.body() != null) {
+                    AuthResponse authResponse = response.body();
+
+                    if (authResponse.isSuccess()) {
+                        User user = authResponse.getUser();
 
                         if (user != null) {
-                            // ✅ مباشرة تسجيل الدخول بدون التحقق من الإيميل
-                            updateEmailVerifiedStatus(user.getUid()); // optional
-                            checkUserRoleAndNavigate(user.getUid());
-                        }
+                            // Save JWT token and user data
+                            tokenManager.saveToken(authResponse.getToken());
+                            tokenManager.saveUser(user);
 
-                    } else {
-                        Log.w(TAG, "signInWithEmail:failure", task.getException());
-
-                        String errorMessage = task.getException() != null
-                                ? task.getException().getMessage()
-                                : "Authentication failed";
-
-                        if (errorMessage.contains("password")) {
-                            passwordLayout.setError("Incorrect password");
-                        } else if (errorMessage.contains("email")) {
-                            emailLayout.setError("Email not found");
+                            Log.d(TAG, "Login successful for user: " + user.getEmail());
+                            navigateBasedOnRole(user.getRole());
                         } else {
-                            Toast.makeText(LoginActivity.this,
-                                    "Authentication failed: " + errorMessage,
-                                    Toast.LENGTH_LONG).show();
+                            Toast.makeText(LoginActivity.this, "User data is null", Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        String message = authResponse.getMessage();
+                        if (message == null) message = "Authentication failed";
+
+                        if (message.toLowerCase().contains("password")) {
+                            passwordLayout.setError(message);
+                        } else if (message.toLowerCase().contains("email")) {
+                            emailLayout.setError(message);
+                        } else {
+                            Toast.makeText(LoginActivity.this, message, Toast.LENGTH_LONG).show();
                         }
                     }
-                });
-    }
-
-    private void updateEmailVerifiedStatus(String userId) {
-        db.collection("users").document(userId)
-                .update("emailVerified", true)
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "Email verified status updated");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to update email verified status", e);
-                });
-    }
-
-    private void checkUserAndRedirect(FirebaseUser user) {
-        showLoading(true);
-
-        String userId = user.getUid();
-
-        db.collection("users").document(userId).get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    showLoading(false);
-
-                    if (documentSnapshot.exists()) {
-                        String role = documentSnapshot.getString("role");
-
-                        if (role != null) {
-                            // ✅ Go to correct dashboard based on role
-                            navigateBasedOnRole(role);
-                        } else {
-                            // No role → send to registration
-                            goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
-                        }
-
-                    } else {
-                        // User not in Firestore → new user
-                        goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                } else {
+                    String errorMsg = "Authentication failed";
+                    if (response.code() == 401) {
+                        errorMsg = "Invalid email or password";
+                    } else if (response.code() == 403) {
+                        errorMsg = "Account locked or disabled";
                     }
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Log.e(TAG, "Auto-login failed", e);
+                    Toast.makeText(LoginActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                }
+            }
 
-                    Toast.makeText(this,
-                            "Failed to load user data",
-                            Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error", t);
+                Toast.makeText(LoginActivity.this,
+                        "Network error: " + t.getMessage(),
+                        Toast.LENGTH_LONG).show();
+            }
+        });
     }
+
     private void signInAsGuest() {
         showLoading(true);
 
-        mAuth.signInAnonymously()
-                .addOnCompleteListener(this, task -> {
-                    showLoading(false);
-                    if (task.isSuccessful()) {
-                        Log.d(TAG, "signInAnonymously:success");
-                        Toast.makeText(LoginActivity.this,
-                                "Continuing as Guest",
-                                Toast.LENGTH_SHORT).show();
-                        goToDashboard();
+        Call<AuthResponse> call = apiInterface.guestLogin();
+        call.enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                showLoading(false);
+
+                if (response.isSuccessful() && response.body() != null) {
+                    AuthResponse authResponse = response.body();
+
+                    if (authResponse.isSuccess()) {
+                        User user = authResponse.getUser();
+
+                        if (user != null) {
+                            tokenManager.saveToken(authResponse.getToken());
+                            tokenManager.saveUser(user);
+
+                            Toast.makeText(LoginActivity.this, "Continuing as Guest", Toast.LENGTH_SHORT).show();
+                            goToDashboard();
+                        } else {
+                            Toast.makeText(LoginActivity.this, "Guest sign-in failed", Toast.LENGTH_LONG).show();
+                        }
                     } else {
-                        Log.w(TAG, "signInAnonymously:failure", task.getException());
-                        Toast.makeText(LoginActivity.this,
-                                "Guest sign-in failed: " + task.getException().getMessage(),
-                                Toast.LENGTH_LONG).show();
+                        Toast.makeText(LoginActivity.this, authResponse.getMessage(), Toast.LENGTH_LONG).show();
                     }
-                });
+                } else {
+                    Toast.makeText(LoginActivity.this, "Guest sign-in failed", Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                showLoading(false);
+                Toast.makeText(LoginActivity.this, "Guest sign-in failed: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void signInWithGoogle() {
@@ -368,19 +330,36 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         showLoading(true);
-        mAuth.sendPasswordResetEmail(email)
-                .addOnCompleteListener(task -> {
-                    showLoading(false);
-                    if (task.isSuccessful()) {
+
+        ForgotPasswordRequest request = new ForgotPasswordRequest(email);
+        Call<AuthResponse> call = apiInterface.forgotPassword(request);
+        call.enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                showLoading(false);
+
+                if (response.isSuccessful() && response.body() != null) {
+                    AuthResponse authResponse = response.body();
+                    if (authResponse.isSuccess()) {
                         Toast.makeText(LoginActivity.this,
                                 "Password reset email sent to " + email,
                                 Toast.LENGTH_LONG).show();
                     } else {
                         Toast.makeText(LoginActivity.this,
-                                "Failed to send reset email: " + task.getException().getMessage(),
+                                authResponse.getMessage() != null ? authResponse.getMessage() : "Failed to send reset email",
                                 Toast.LENGTH_LONG).show();
                     }
-                });
+                } else {
+                    Toast.makeText(LoginActivity.this, "Failed to send reset email", Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                showLoading(false);
+                Toast.makeText(LoginActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     @Override
@@ -388,7 +367,6 @@ public class LoginActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == RC_SIGN_IN) {
-            showLoading(false);
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
                 GoogleSignInAccount account = task.getResult(ApiException.class);
@@ -396,130 +374,97 @@ public class LoginActivity extends AppCompatActivity {
                     Log.d(TAG, "Google Sign-In successful: " + account.getEmail());
                     firebaseAuthWithGoogle(account.getIdToken());
                 } else {
+                    showLoading(false);
                     Toast.makeText(this, "Google Sign-In failed: No account", Toast.LENGTH_SHORT).show();
                 }
             } catch (ApiException e) {
+                showLoading(false);
                 Log.e(TAG, "Google Sign-In failed", e);
-                Toast.makeText(this,
-                        "Google Sign-In failed: " + e.getMessage(),
-                        Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Google Sign-In failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         }
     }
 
     private void firebaseAuthWithGoogle(String idToken) {
-        showLoading(true);
-        AuthCredential credential = GoogleAuthProvider.getCredential(idToken, null);
+        GoogleLoginRequest request = new GoogleLoginRequest(idToken, selectedRole);
 
-        mAuth.signInWithCredential(credential)
-                .addOnCompleteListener(this, task -> {
-                    showLoading(false);
-                    if (task.isSuccessful()) {
-                        Log.d(TAG, "signInWithCredential:success");
-                        FirebaseUser user = mAuth.getCurrentUser();
+        Call<AuthResponse> call = apiInterface.googleLogin(request);
+        call.enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                showLoading(false);
+
+                Log.d(TAG, "Response code: " + response.code());
+                Log.d(TAG, "Response is successful: " + response.isSuccessful());
+
+                if (response.isSuccessful() && response.body() != null) {
+                    AuthResponse authResponse = response.body();
+                    Log.d(TAG, "Auth Response success: " + authResponse.isSuccess());
+                    Log.d(TAG, "Auth Response message: " + authResponse.getMessage());
+
+                    if (authResponse.isSuccess()) {
+                        User user = authResponse.getUser();
+
                         if (user != null) {
-                            // Check if user exists in Firestore
-                            checkUserExistsInFirestore(user);
-                        }
-                    } else {
-                        Log.w(TAG, "signInWithCredential:failure", task.getException());
-                        Toast.makeText(this,
-                                "Authentication Failed: " + task.getException().getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
-    }
+                            Log.d(TAG, "User - ID: " + user.getId());
+                            Log.d(TAG, "User - Email: " + user.getEmail());
+                            Log.d(TAG, "User - Name: " + user.getName());
+                            Log.d(TAG, "User - Role: " + user.getRole());
 
-    private void checkUserExistsInFirestore(FirebaseUser user) {
-        String userId = user.getUid();
+                            // Save token and user
+                            tokenManager.saveToken(authResponse.getToken());
+                            tokenManager.saveUser(user);
 
-        db.collection("users").document(userId).get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    if (documentSnapshot.exists()) {
-                        // User exists, check role and navigate
-                        String userRole = documentSnapshot.getString("role");
-                        if (userRole != null) {
-                            navigateBasedOnRole(userRole);
+                            // Navigate based on role
+                            String role = user.getRole();
+                            Log.d(TAG, "Navigating with role: " + role);
+                            navigateBasedOnRole(role);
                         } else {
-                            // No role assigned, go to registration to select role
-                            goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                            Log.e(TAG, "User object is null!");
+                            Toast.makeText(LoginActivity.this, "User data is null", Toast.LENGTH_LONG).show();
                         }
                     } else {
-                        // New user, go to registration
-                        goToRegistrationWithEmail(user.getEmail(), user.getDisplayName());
+                        Log.e(TAG, "Auth failed: " + authResponse.getMessage());
+                        Toast.makeText(LoginActivity.this, authResponse.getMessage(), Toast.LENGTH_LONG).show();
                     }
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Error checking user existence", e);
-                    Toast.makeText(this, "Error checking user data", Toast.LENGTH_SHORT).show();
-                    goToDashboard(); // Fallback to dashboard
-                });
-    }
-
-    private void goToRegistrationWithEmail(String email, String name) {
-        Intent intent = new Intent(LoginActivity.this, RegisterActivity.class);
-        if (email != null) intent.putExtra("email", email);
-        if (name != null) intent.putExtra("name", name);
-        startActivity(intent);
-        finish();
-    }
-
-    private void checkUserRoleAndNavigate(String userId) {
-        showLoading(true);
-
-        db.collection("users").document(userId).get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    showLoading(false);
-                    if (documentSnapshot.exists()) {
-                        String userRole = documentSnapshot.getString("role");
-
-                        // Validate selected role matches actual user role
-                        if (userRole != null && userRole.equals(selectedRole)) {
-                            // Role matches, navigate to appropriate activity
-                            navigateBasedOnRole(userRole);
-                        } else {
-                            // Role mismatch
-                            Toast.makeText(LoginActivity.this,
-                                    "You selected " + selectedRole + " but your account is registered as " + userRole,
-                                    Toast.LENGTH_LONG).show();
-
-                            // Auto-correct the role selection
-                            if ("owner".equals(userRole)) {
-                                chipOwnerLogin.setChecked(true);
-                            } else if ("tenant".equals(userRole)) {
-                                chipTenantLogin.setChecked(true);
-                            }
-                        }
-                    } else {
-                        // User document not found
-                        Toast.makeText(LoginActivity.this,
-                                "User data not found. Please contact support.",
-                                Toast.LENGTH_LONG).show();
-                        mAuth.signOut();
+                } else {
+                    Log.e(TAG, "Response error - Code: " + response.code());
+                    try {
+                        String errorBody = response.errorBody() != null ? response.errorBody().string() : "null";
+                        Log.e(TAG, "Error body: " + errorBody);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error body", e);
                     }
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Log.e(TAG, "Error checking user role", e);
-                    Toast.makeText(LoginActivity.this,
-                            "Error checking user role: " + e.getMessage(),
-                            Toast.LENGTH_SHORT).show();
-                });
+                    Toast.makeText(LoginActivity.this, "Google Sign-In failed", Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network failure", t);
+                Toast.makeText(LoginActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void navigateBasedOnRole(String role) {
+        Log.d(TAG, "navigateBasedOnRole called with role: " + role);
+
         Intent intent;
 
-        if ("owner".equals(role)) {
-            // Owner dashboard
+        if ("owner".equalsIgnoreCase(role)) {
+            Log.d(TAG, "Navigating to OwnerDashboard");
             intent = new Intent(LoginActivity.this, OwnerDashboard.class);
+        } else if ("tenant".equalsIgnoreCase(role)) {
+            Log.d(TAG, "Navigating to DashboardActivity");
+            intent = new Intent(LoginActivity.this, DashboardActivity.class);
         } else {
-            // Tenant/User dashboard
+            Log.d(TAG, "Unknown role, navigating to default Dashboard");
             intent = new Intent(LoginActivity.this, DashboardActivity.class);
         }
 
         intent.putExtra("role", role);
-        intent.putExtra("userId", mAuth.getCurrentUser().getUid());
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
@@ -529,7 +474,6 @@ public class LoginActivity extends AppCompatActivity {
         Intent intent = new Intent(LoginActivity.this, LocationMap.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         finish();
     }
 
@@ -538,22 +482,11 @@ public class LoginActivity extends AppCompatActivity {
             loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
         }
 
-        // Enable/disable buttons
         btnSignIn.setEnabled(!show);
         guestButton.setEnabled(!show);
         signUpButton.setEnabled(!show);
         googleButton.setEnabled(!show);
         chipTenantLogin.setEnabled(!show);
         chipOwnerLogin.setEnabled(!show);
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // Check if user is already signed in (anonymous users)
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser != null && currentUser.isAnonymous()) {
-            goToDashboard();
-        }
     }
 }

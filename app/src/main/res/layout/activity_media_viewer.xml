@@ -87,7 +87,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="Document Name"
+            android:text="@string/document_name"
             android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="@android:color/black" />
@@ -101,6 +101,7 @@
             android:textSize="14sp"
             android:textColor="@android:color/darker_gray" />
 
+        <!-- REPLACED MaterialButton with regular Button -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -108,25 +109,25 @@
             android:layout_marginTop="32dp"
             android:gravity="center">
 
-            <com.google.android.material.button.MaterialButton
+            <Button
                 android:id="@+id/btnDownload"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
                 android:text="Download"
-                app:icon="@drawable/ic_download"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                android:backgroundTint="@android:color/white"
+                android:textColor="@android:color/black" />
 
-            <com.google.android.material.button.MaterialButton
+            <Button
                 android:id="@+id/btnOpenWith"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
                 android:text="Open With"
-                app:icon="@drawable/ic_open_with"
-                style="@style/Widget.MaterialComponents.Button" />
+                android:backgroundTint="@color/primary"
+                android:textColor="@android:color/white" />
 
         </LinearLayout>
 
@@ -147,10 +148,10 @@
     <!-- Progress Bar -->
     <ProgressBar
         android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleLarge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:visibility="gone"
-        android:indeterminateTint="@color/primary" />
+        android:visibility="gone" />
 
 </FrameLayout>

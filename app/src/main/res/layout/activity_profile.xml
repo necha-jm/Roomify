@@ -38,7 +38,6 @@
                     android:layout_height="120dp"
                     android:layout_gravity="center">
 
-                    <!-- Profile Image -->
                     <androidx.cardview.widget.CardView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
@@ -50,20 +49,19 @@
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:scaleType="centerCrop"
-                            android:src="@drawable/ic_launcher_background"/>
+                            android:src="@drawable/ic_profile" />
                     </androidx.cardview.widget.CardView>
 
-                    <!-- Floating PLUS Button -->
                     <com.google.android.material.floatingactionbutton.FloatingActionButton
                         android:id="@+id/fabAddPhoto"
                         android:layout_width="40dp"
                         android:layout_height="40dp"
                         android:layout_gravity="bottom|end"
                         android:layout_margin="4dp"
-                        android:contentDescription="TODO"
+                        android:contentDescription="Add Photo"
                         app:srcCompat="@android:drawable/ic_input_add"
                         app:backgroundTint="@color/primary_teal"
-                        app:tint="@color/white"/>
+                        app:tint="@color/white" />
                 </FrameLayout>
 
                 <!-- User Name -->
@@ -72,16 +70,39 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="user name"
+                    android:text="User Name"
                     android:textSize="24sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_dark" />
+
+                <!-- User Email -->
+                <TextView
+                    android:id="@+id/profileEmail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="user@example.com"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_gray" />
+
+                <!-- User Role Badge -->
+                <TextView
+                    android:id="@+id/profileRole"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="4dp"
+                    android:text="Tenant"
+                    android:textSize="12sp"
+                    android:textColor="@color/white"
+                    android:visibility="gone" />
 
                 <!-- Rating Row -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="8dp"
                     android:gravity="center"
                     android:orientation="horizontal">
 
@@ -97,8 +118,93 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:text="Uwekaji alama"
+                        android:text="Rating"
                         android:textSize="14sp"
+                        android:textColor="@color/text_gray" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Stats Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="16dp"
+                android:orientation="horizontal"
+                android:weightSum="3">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/tvBookingsCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/primary_teal" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bookings"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_gray" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/tvPropertiesCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/primary_teal" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Properties"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_gray" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/tvReviewsCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/primary_teal" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reviews"
+                        android:textSize="12sp"
                         android:textColor="@color/text_gray" />
                 </LinearLayout>
             </LinearLayout>
@@ -123,15 +229,17 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text=" Request area"
+                        android:text="Travel Plans"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="@color/primary_teal_dark" />
 
                     <TextView
+                        android:id="@+id/travelPlanText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
+                        android:text="You have no active travel plans"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:lineSpacingExtra="2dp" />
@@ -144,21 +252,21 @@
                         android:backgroundTint="@color/primary_teal"
                         android:paddingHorizontal="20dp"
                         android:paddingVertical="10dp"
-                        android:text="VIEW REQUEST"
+                        android:text="VIEW REQUESTS"
                         android:textColor="@color/white"
                         android:textSize="14sp"
                         app:cornerRadius="30dp" />
-
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Settings Section -->
+            <!-- Settings Section Title -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="12dp"
+                android:text="SETTINGS"
                 android:textSize="14sp"
                 android:textColor="@color/text_gray"
                 android:textAllCaps="true"
@@ -169,49 +277,68 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:showDividers="middle"
                 android:background="@color/white">
 
+                <!-- Logout Item -->
                 <LinearLayout
                     android:id="@+id/logout"
-                    style="@style/SettingItemStyle">
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
 
                     <TextView
-                        style="@style/SettingTextStyle"
-                        android:text="@string/logout"/>
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Logout"
+                        android:textSize="16sp"
+                        android:textColor="@color/text_dark" />
 
                     <ImageView
-                        style="@style/SettingIconStyle"
-                        android:src="@drawable/ic_chevron_right" />
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="@color/text_gray" />
                 </LinearLayout>
 
-            </LinearLayout>
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider_color" />
 
-
-            <!-- Saved Places Items -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:divider="@drawable/divider_line"
-                android:showDividers="middle"
-                android:background="@color/white">
-
-
+                <!-- Account Item -->
                 <LinearLayout
-                    style="@style/SettingItemStyle">
+                    android:id="@+id/accountLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
 
                     <TextView
-                        style="@style/SettingTextStyle"
-                        android:text="Akaunti" />
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Account Settings"
+                        android:textSize="16sp"
+                        android:textColor="@color/text_dark" />
 
                     <ImageView
-                        style="@style/SettingIconStyle"
-                        android:src="@drawable/ic_chevron_right" />
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="@color/text_gray" />
                 </LinearLayout>
-
             </LinearLayout>
-
         </LinearLayout>
     </ScrollView>
 

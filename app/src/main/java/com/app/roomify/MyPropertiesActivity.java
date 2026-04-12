@@ -15,13 +15,20 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
+
+import com.app.roomify.models.ApiResponse;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class MyPropertiesActivity extends AppCompatActivity {
 
@@ -34,19 +41,25 @@ public class MyPropertiesActivity extends AppCompatActivity {
     private ImageView ivBack;
     private TextView tvTitle;
 
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore db;
+    // Backend Components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
     private MyPropertiesAdapter propertiesAdapter;
     private List<Room> propertyList;
-    private String currentUserId;
+    private Long currentUserId = null;  // FIXED: Use Long object instead of primitive long
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_my_properties);
 
+        // Initialize backend components
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
+
         initViews();
-        setupFirebase();
+        setupUser();
         setupClickListeners();
         loadProperties();
     }
@@ -66,17 +79,15 @@ public class MyPropertiesActivity extends AppCompatActivity {
         rvProperties.setAdapter(propertiesAdapter);
     }
 
-    private void setupFirebase() {
-        mAuth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
-        currentUserId = mAuth.getCurrentUser() != null ? mAuth.getCurrentUser().getUid() : null;
-
-        Log.d(TAG, "Current User UID: " + currentUserId);
-
-        if (currentUserId == null) {
+    private void setupUser() {
+        if (!tokenManager.isLoggedIn()) {
             Toast.makeText(this, "Please login again", Toast.LENGTH_SHORT).show();
             finish();
+            return;
         }
+
+        currentUserId = tokenManager.getUserId();
+        Log.d(TAG, "Current User ID: " + currentUserId);
     }
 
     private void setupClickListeners() {
@@ -89,71 +100,61 @@ public class MyPropertiesActivity extends AppCompatActivity {
     }
 
     private void loadProperties() {
-        if (currentUserId == null) return;
+        // FIXED: Check if currentUserId is null (not primitive comparison)
+        if (currentUserId == null) {
+            Toast.makeText(this, "Please login again", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
 
         showLoading(true);
         tvNoProperties.setVisibility(View.GONE);
         tvErrorMessage.setVisibility(View.GONE);
 
-        Log.d(TAG, "Loading properties for user: " + currentUserId);
+        Log.d(TAG, "Loading properties for user ID: " + currentUserId);
 
-        // FIRST: Check ALL rooms to see what exists
-        db.collection("rooms")
-                .get()
-                .addOnCompleteListener(allRoomsTask -> {
-                    if (allRoomsTask.isSuccessful()) {
-                        Log.d(TAG, "=== TOTAL ROOMS IN DATABASE: " + allRoomsTask.getResult().size());
-                        for (QueryDocumentSnapshot doc : allRoomsTask.getResult()) {
-                            String postedBy = doc.getString("postedBy");
-                            Log.d(TAG, "Room ID: " + doc.getId() +
-                                    ", Title: " + doc.getString("title") +
-                                    ", postedBy: " + postedBy +
-                                    ", Current User: " + currentUserId +
-                                    ", Match: " + (currentUserId.equals(postedBy)));
-                        }
-                    }
-                });
+        Call<List<Room>> call = apiInterface.getRoomsByOwner(currentUserId);
+        call.enqueue(new Callback<List<Room>>() {
+            @Override
+            public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                showLoading(false);
 
-        // Now load only current user's properties
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    showLoading(false);
+                if (response.isSuccessful() && response.body() != null) {
+                    List<Room> rooms = response.body();
                     propertyList.clear();
 
-                    Log.d(TAG, "Query returned " + queryDocumentSnapshots.size() + " properties for user");
+                    Log.d(TAG, "Loaded " + rooms.size() + " properties for user");
 
-                    if (queryDocumentSnapshots.isEmpty()) {
+                    if (rooms.isEmpty()) {
                         tvNoProperties.setVisibility(View.VISIBLE);
                         tvErrorMessage.setText("No properties found. Try posting one!");
                         tvErrorMessage.setVisibility(View.VISIBLE);
-                        Log.d(TAG, "No properties found for user: " + currentUserId);
                         propertiesAdapter.notifyDataSetChanged();
                         return;
                     }
 
-                    for (QueryDocumentSnapshot document : queryDocumentSnapshots) {
-                        try {
-                            Room room = document.toObject(Room.class);
-                            room.setId(document.getId());
-
-                            // Debug: Print all fields
-                            Log.d(TAG, "Property found - ID: " + room.getId());
-                            Log.d(TAG, "  Title: " + room.getTitle());
-                            Log.d(TAG, "  postedBy field: " + document.getString("postedBy"));
-                            Log.d(TAG, "  All data: " + document.getData());
-
-                            propertyList.add(room);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error converting document: " + e.getMessage());
-                        }
+                    for (Room room : rooms) {
+                        Log.d(TAG, "Property found - ID: " + room.getId());
+                        Log.d(TAG, "  Title: " + room.getTitle());
+                        Log.d(TAG, "  Price: $" + room.getPrice());
+                        Log.d(TAG, "  Status: " + room.getStatus());
+                        propertyList.add(room);
                     }
 
                     // Sort by createdAt (newest first)
-                    Collections.sort(propertyList, (r1, r2) ->
-                            Long.compare(r2.getCreatedAt(), r1.getCreatedAt())
-                    );
+                    Collections.sort(propertyList, new Comparator<Room>() {
+                        @Override
+                        public int compare(Room r1, Room r2) {
+                            String date1 = r1.getCreatedAt();
+                            String date2 = r2.getCreatedAt();
+
+                            if (date1 == null && date2 == null) return 0;
+                            if (date1 == null) return 1;
+                            if (date2 == null) return -1;
+
+                            return date2.compareTo(date1);
+                        }
+                    });
 
                     propertiesAdapter.notifyDataSetChanged();
                     Log.d(TAG, "Loaded " + propertyList.size() + " properties into adapter");
@@ -161,29 +162,19 @@ public class MyPropertiesActivity extends AppCompatActivity {
                     if (propertyList.isEmpty()) {
                         tvNoProperties.setVisibility(View.VISIBLE);
                     }
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Log.e(TAG, "Error loading properties: ", e);
-                    tvErrorMessage.setVisibility(View.VISIBLE);
-                    tvErrorMessage.setText("Error: " + e.getMessage());
-                    Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
-    }
+                } else {
+                    Log.e(TAG, "Failed to load properties. Code: " + response.code());
+                    showError("Failed to load properties. Please try again.");
+                }
+            }
 
-    private void loadBookingsCountForRoom(Room room) {
-        if (room.getId() == null) return;
-
-        db.collection("rooms")
-                .document(room.getId())
-                .collection("bookings")
-                .whereEqualTo("status", "approved")
-                .get()
-                .addOnSuccessListener(bookings -> {
-                    room.setBookingsCount(bookings.size());
-                    propertiesAdapter.notifyDataSetChanged();
-                })
-                .addOnFailureListener(e -> Log.e(TAG, "Error loading bookings: ", e));
+            @Override
+            public void onFailure(Call<List<Room>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error loading properties: " + t.getMessage());
+                showError("Network error: " + t.getMessage());
+            }
+        });
     }
 
     private void onPropertyClick(Room room) {
@@ -202,38 +193,77 @@ public class MyPropertiesActivity extends AppCompatActivity {
     }
 
     private void deleteProperty(Room room) {
+        if (room == null || room.getId() == 0) {
+            Toast.makeText(this, "Invalid property", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         showLoading(true);
 
-        db.collection("rooms")
-                .document(room.getId())
-                .collection("bookings")
-                .get()
-                .addOnSuccessListener(bookings -> {
-                    for (QueryDocumentSnapshot booking : bookings) {
-                        booking.getReference().delete();
-                    }
+        long roomId = room.getId();
+        Log.d(TAG, "Attempting to delete property with ID: " + roomId);
 
-                    db.collection("rooms")
-                            .document(room.getId())
-                            .delete()
-                            .addOnSuccessListener(aVoid -> {
-                                showLoading(false);
-                                Toast.makeText(this, "Property deleted", Toast.LENGTH_SHORT).show();
-                                loadProperties();
-                            })
-                            .addOnFailureListener(e -> {
-                                showLoading(false);
-                                Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                            });
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+        Call<ApiResponse<Void>> call = apiInterface.deleteRoom(roomId);
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                showLoading(false);
+
+                Log.d(TAG, "Delete response code: " + response.code());
+
+                if (response.isSuccessful() && response.body() != null) {
+                    ApiResponse<Void> apiResponse = response.body();
+                    if (apiResponse.isSuccess()) {
+                        Log.d(TAG, "✅ Property deleted successfully: " + roomId);
+                        Toast.makeText(MyPropertiesActivity.this, "Property deleted", Toast.LENGTH_SHORT).show();
+                        loadProperties(); // Refresh the list
+                    } else {
+                        String errorMsg = apiResponse.getMessage() != null ? apiResponse.getMessage() : "Failed to delete property";
+                        Log.e(TAG, "Delete failed: " + errorMsg);
+                        Toast.makeText(MyPropertiesActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                    }
+                } else {
+                    String errorMsg = "Error deleting property";
+                    try {
+                        if (response.errorBody() != null) {
+                            errorMsg = response.errorBody().string();
+                            Log.e(TAG, "Error body: " + errorMsg);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error body", e);
+                    }
+                    Toast.makeText(MyPropertiesActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error deleting property: " + t.getMessage(), t);
+                Toast.makeText(MyPropertiesActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void showError(String message) {
+        runOnUiThread(() -> {
+            tvErrorMessage.setVisibility(View.VISIBLE);
+            tvErrorMessage.setText(message);
+            tvNoProperties.setVisibility(View.VISIBLE);
+            Toast.makeText(MyPropertiesActivity.this, message, Toast.LENGTH_LONG).show();
+        });
     }
 
     private void showLoading(boolean show) {
-        progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        rvProperties.setVisibility(show ? View.GONE : View.VISIBLE);
+        runOnUiThread(() -> {
+            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+            rvProperties.setVisibility(show ? View.GONE : View.VISIBLE);
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        loadProperties();
     }
 }

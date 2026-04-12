@@ -13,16 +13,25 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.app.roomify.models.ApiResponse;
+import com.app.roomify.models.BookingResponse;
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.card.MaterialCardView;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
 public class OwnerDashboard extends AppCompatActivity {
+
+    private static final String TAG = "OwnerDashboard";
 
     // Views
     private TextView tvOwnerName, tvTotalProperties, tvTotalBookings, tvTotalEarnings;
@@ -34,15 +43,18 @@ public class OwnerDashboard extends AppCompatActivity {
     private View loadingOverlay;
     private ProgressBar progressBar, earningsProgress;
 
-    // Firebase
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore db;
+    // MySQL Backend components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
+    private User currentUser;
+    private Long currentUserId;
 
     // Adapters
     private PendingRequestAdapter pendingRequestAdapter;
     private PropertyAdapter propertyAdapter;
 
-    private String currentUserId;
+    private List<Room> allProperties;
+    private List<BookingResponse> allPendingRequests;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,7 +62,7 @@ public class OwnerDashboard extends AppCompatActivity {
         setContentView(R.layout.activity_owner_dashboard);
 
         initViews();
-        setupFirebase();
+        setupBackend();
         loadOwnerData();
         setupClickListeners();
         setupBottomNavigation();
@@ -86,38 +98,53 @@ public class OwnerDashboard extends AppCompatActivity {
         rvPendingRequests.setLayoutManager(new LinearLayoutManager(this));
         rvProperties.setLayoutManager(new LinearLayoutManager(this));
 
-        // Initialize adapters with empty lists
-        pendingRequestAdapter = new PendingRequestAdapter(new ArrayList<>(), this::onRequestAction);
+        // Initialize lists and adapters
+        allProperties = new ArrayList<>();
+        allPendingRequests = new ArrayList<>();
+
+        // Create adapter with BookingResponse
+        pendingRequestAdapter = new PendingRequestAdapter(new ArrayList<BookingResponse>(),
+                new PendingRequestAdapter.OnRequestActionListener() {
+                    @Override
+                    public void onAction(BookingResponse request, String action) {
+                        if ("accept".equals(action)) {
+                            updateBookingStatus(request, "ACCEPTED");
+                        } else if ("reject".equals(action)) {
+                            updateBookingStatus(request, "REJECTED");
+                        }
+                    }
+                });
+
         propertyAdapter = new PropertyAdapter(new ArrayList<>(), this::onPropertyClick);
 
         rvPendingRequests.setAdapter(pendingRequestAdapter);
         rvProperties.setAdapter(propertyAdapter);
     }
 
-    private void setupFirebase() {
-        mAuth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
-        currentUserId = mAuth.getCurrentUser() != null ? mAuth.getCurrentUser().getUid() : null;
+    private void setupBackend() {
+        tokenManager = new TokenManager(this);
 
-        if (currentUserId == null) {
+        // Check if user is logged in
+        if (!tokenManager.isLoggedIn()) {
             Toast.makeText(this, "Please login again", Toast.LENGTH_SHORT).show();
             finish();
+            return;
         }
+
+        currentUser = tokenManager.getUser();
+        if (currentUser != null) {
+            currentUserId = currentUser.getId();
+        }
+
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
     }
 
     private void loadOwnerData() {
-        if (currentUserId == null) return;
-
-        db.collection("users").document(currentUserId).get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    if (documentSnapshot.exists()) {
-                        String name = documentSnapshot.getString("name");
-                        tvOwnerName.setText(name != null ? "Welcome, " + name.split(" ")[0] : "Property Owner");
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    Toast.makeText(this, "Error loading user data", Toast.LENGTH_SHORT).show();
-                });
+        if (currentUser != null) {
+            String name = currentUser.getName();
+            tvOwnerName.setText(name != null ? "Welcome, " + name.split(" ")[0] : "Property Owner");
+        }
 
         loadStatistics();
     }
@@ -125,31 +152,79 @@ public class OwnerDashboard extends AppCompatActivity {
     private void loadStatistics() {
         if (currentUserId == null) return;
 
-        // Count properties
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnSuccessListener(query -> {
-                    int count = query.size();
-                    tvTotalProperties.setText(String.valueOf(count));
-                });
+        showLoading(true);
 
-        // Count bookings and earnings
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnSuccessListener(rooms -> {
-                    int totalBookings = 0;
-                    double totalEarnings = 0;
+        // Get properties count
+        Call<List<Room>> roomsCall = apiInterface.getRoomsByOwner(currentUserId);
+        roomsCall.enqueue(new Callback<List<Room>>() {
+            @Override
+            public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    tvTotalProperties.setText(String.valueOf(response.body().size()));
+                }
+            }
 
-                    // You need to iterate through each room and count its bookings
-                    // This is simplified - you'll need to implement actual counting
+            @Override
+            public void onFailure(Call<List<Room>> call, Throwable t) {
+                Log.e(TAG, "Failed to load properties count", t);
+            }
+        });
 
-                    tvTotalBookings.setText(String.valueOf(totalBookings));
-                    tvTotalEarnings.setText("$" + totalEarnings);
-                    tvThisMonthEarnings.setText("$" + (totalEarnings * 0.3));
-                    tvLastMonthEarnings.setText("$" + (totalEarnings * 0.2));
-                });
+        // Get all bookings for this owner
+        Call<ApiResponse<List<BookingResponse>>> bookingsCall = apiInterface.getOwnerBookings(currentUserId);
+        bookingsCall.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                   Response<ApiResponse<List<BookingResponse>>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    List<BookingResponse> allBookings = response.body().getData();
+                    calculateStatisticsFromBookings(allBookings);
+                } else {
+                    Log.e(TAG, "Failed to load bookings for statistics");
+                    showLoading(false);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
+                Log.e(TAG, "Network error loading bookings", t);
+                showLoading(false);
+            }
+        });
+    }
+
+    private void calculateStatisticsFromBookings(List<BookingResponse> bookings) {
+        if (bookings == null || bookings.isEmpty()) {
+            runOnUiThread(() -> {
+                tvTotalBookings.setText("0");
+                tvTotalEarnings.setText("$0");
+                tvThisMonthEarnings.setText("$0");
+                tvLastMonthEarnings.setText("$0");
+                showLoading(false);
+            });
+            return;
+        }
+
+        int totalBookings = 0;
+        double totalEarnings = 0;
+
+        for (BookingResponse booking : bookings) {
+            if ("ACCEPTED".equals(booking.getStatus()) || "CONFIRMED".equals(booking.getStatus())) {
+                totalBookings++;
+                totalEarnings += booking.getTotalPrice();
+            }
+        }
+
+        final int finalTotalBookings = totalBookings;
+        final double finalTotalEarnings = totalEarnings;
+
+        runOnUiThread(() -> {
+            tvTotalBookings.setText(String.valueOf(finalTotalBookings));
+            tvTotalEarnings.setText(String.format("$%.2f", finalTotalEarnings));
+            tvThisMonthEarnings.setText("$0.00");
+            tvLastMonthEarnings.setText("$0.00");
+            showLoading(false);
+        });
     }
 
     private void setupClickListeners() {
@@ -158,8 +233,6 @@ public class OwnerDashboard extends AppCompatActivity {
             startActivity(intent);
         });
 
-
-        //modificatio required here
         cardMyProperties.setOnClickListener(v -> {
             Intent intent = new Intent(OwnerDashboard.this, MyPropertiesActivity.class);
             startActivity(intent);
@@ -199,7 +272,7 @@ public class OwnerDashboard extends AppCompatActivity {
                 startActivity(intent);
                 return true;
             } else if (itemId == R.id.nav_bookings) {
-                Intent intent = new Intent(OwnerDashboard.this, BookingRequest.class);
+                Intent intent = new Intent(OwnerDashboard.this, BookingRequestsActivity.class);
                 intent.putExtra("role", "owner");
                 startActivity(intent);
                 return true;
@@ -216,72 +289,46 @@ public class OwnerDashboard extends AppCompatActivity {
         if (currentUserId == null) return;
 
         showLoading(true);
+        allPendingRequests.clear();
 
-        // Create a temporary list to collect all requests
-        List<BookingRequest> allPendingRequests = new ArrayList<>();
+        Call<ApiResponse<List<BookingResponse>>> call = apiInterface.getOwnerBookings(currentUserId);
+        call.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                   Response<ApiResponse<List<BookingResponse>>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    List<BookingResponse> allBookings = response.body().getData();
 
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnSuccessListener(rooms -> {
-                    if (rooms.isEmpty()) {
-                        showLoading(false);
+                    if (allBookings != null) {
+                        // Filter only PENDING bookings
+                        for (BookingResponse booking : allBookings) {
+                            if ("PENDING".equals(booking.getStatus())) {
+                                allPendingRequests.add(booking);
+                            }
+                        }
+                    }
+
+                    runOnUiThread(() -> {
                         pendingRequestAdapter.setRequests(allPendingRequests);
-                        return;
-                    }
+                        showLoading(false);
 
-                    // Track how many rooms have been processed
-                    final int[] processedRooms = {0};
-                    final int totalRooms = rooms.size();
-
-                    for (QueryDocumentSnapshot room : rooms) {
-                        String roomId = room.getId();
-                        String roomTitle = room.getString("title");
-                        if (roomTitle == null) roomTitle = "Unknown Room";
-
-                        String finalRoomTitle = roomTitle;
-                        db.collection("rooms")
-                                .document(roomId)
-                                .collection("bookings")
-                                .whereEqualTo("status", "pending")
-                                .get()
-                                .addOnSuccessListener(bookings -> {
-                                    for (QueryDocumentSnapshot booking : bookings) {
-                                        BookingRequest request = booking.toObject(BookingRequest.class);
-                                        if (request != null) {
-                                            request.setId(booking.getId());
-                                            request.setRoomId(roomId);
-                                            request.setRoomTitle(finalRoomTitle);
-                                            allPendingRequests.add(request);
-                                        }
-                                    }
-
-                                    processedRooms[0]++;
-
-                                    // Update adapter after processing all rooms
-                                    if (processedRooms[0] == totalRooms) {
-                                        pendingRequestAdapter.setRequests(allPendingRequests);
-                                        showLoading(false);
-
-                                        // Show empty state if no requests
-                                        if (allPendingRequests.isEmpty()) {
-                                            Toast.makeText(this, "No pending requests", Toast.LENGTH_SHORT).show();
-                                        }
-                                    }
-                                })
-                                .addOnFailureListener(e -> {
-                                    processedRooms[0]++;
-                                    if (processedRooms[0] == totalRooms) {
-                                        pendingRequestAdapter.setRequests(allPendingRequests);
-                                        showLoading(false);
-                                    }
-                                });
-                    }
-                })
-                .addOnFailureListener(e -> {
+                        if (allPendingRequests.isEmpty()) {
+                            Toast.makeText(OwnerDashboard.this, "No pending requests", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } else {
                     showLoading(false);
-                    Toast.makeText(this, "Error loading requests: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+                    Log.e(TAG, "Failed to load pending requests");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error loading pending requests", t);
+                Toast.makeText(OwnerDashboard.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void loadProperties() {
@@ -289,85 +336,65 @@ public class OwnerDashboard extends AppCompatActivity {
 
         showLoading(true);
 
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnSuccessListener(rooms -> {
-                    List<Room> propertyList = new ArrayList<>();
+        Call<List<Room>> call = apiInterface.getRoomsByOwner(currentUserId);
+        call.enqueue(new Callback<List<Room>>() {
+            @Override
+            public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                showLoading(false);
 
-                    for (QueryDocumentSnapshot document : rooms) {
-                        Room room = document.toObject(Room.class);
-                        if (room != null) {
-                            room.setId(document.getId());
-                            propertyList.add(room);
-                        }
+                if (response.isSuccessful() && response.body() != null) {
+                    List<Room> properties = response.body();
+                    propertyAdapter.setRooms(properties);
+
+                    if (properties.isEmpty()) {
+                        Toast.makeText(OwnerDashboard.this, "No properties found. Add your first property!", Toast.LENGTH_LONG).show();
                     }
+                } else {
+                    Toast.makeText(OwnerDashboard.this, "Error loading properties", Toast.LENGTH_SHORT).show();
+                }
+            }
 
-                    propertyAdapter.setRooms(propertyList);
-                    showLoading(false);
-
-                    if (propertyList.isEmpty()) {
-                        Toast.makeText(this, "No properties found. Add your first property!", Toast.LENGTH_LONG).show();
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Toast.makeText(this, "Error loading properties: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<List<Room>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error loading properties", t);
+                Toast.makeText(OwnerDashboard.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void onRequestAction(BookingRequest request, String action) {
-        if ("accept".equals(action)) {
-            updateBookingStatus(request, "approved");
-        } else if ("reject".equals(action)) {
-            updateBookingStatus(request, "rejected");
-        }
-    }
-
-    // When a booking is approved or created
-    private void updateBookingStatus(BookingRequest request, String status) {
+    private void updateBookingStatus(BookingResponse request, String status) {
         showLoading(true);
 
-        // Update booking status
-        db.collection("rooms")
-                .document(request.getRoomId())
-                .collection("bookings")
-                .document(request.getId())
-                .update("status", status)
-                .addOnSuccessListener(aVoid -> {
-                    // Also update the room's bookings count
-                    updateRoomBookingsCount(request.getRoomId());
+        Call<ApiResponse<Void>> call;
+        if ("ACCEPTED".equals(status)) {
+            call = apiInterface.acceptBooking(request.getId());
+        } else {
+            call = apiInterface.rejectBooking(request.getId());
+        }
 
-                    showLoading(false);
-                    Toast.makeText(this, "Booking " + status + "d", Toast.LENGTH_SHORT).show();
-                    loadPendingRequests();
-                    loadStatistics();
-                })
-                .addOnFailureListener(e -> {
-                    showLoading(false);
-                    Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-    }
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                showLoading(false);
 
-    // Helper method to update room's bookings count
-    private void updateRoomBookingsCount(String roomId) {
-        // Count all approved bookings for this room
-        db.collection("rooms")
-                .document(roomId)
-                .collection("bookings")
-                .whereEqualTo("status", "approved")
-                .get()
-                .addOnSuccessListener(bookings -> {
-                    int count = bookings.size();
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Toast.makeText(OwnerDashboard.this, "Booking " + status.toLowerCase(), Toast.LENGTH_SHORT).show();
+                    loadPendingRequests(); // Refresh pending requests
+                    loadStatistics(); // Refresh statistics
+                } else {
+                    String message = response.body() != null ? response.body().getMessage() : "Unknown error";
+                    Toast.makeText(OwnerDashboard.this, "Error: " + message, Toast.LENGTH_SHORT).show();
+                }
+            }
 
-                    // Update the room document with the count
-                    db.collection("rooms")
-                            .document(roomId)
-                            .update("bookingsCount", count)
-                            .addOnSuccessListener(aVoid -> {
-                                Log.d("OwnerDashboard", "Updated bookings count for room: " + roomId + " to " + count);
-                            });
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error updating booking status", t);
+                Toast.makeText(OwnerDashboard.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void onPropertyClick(Room room) {
@@ -377,11 +404,13 @@ public class OwnerDashboard extends AppCompatActivity {
     }
 
     private void showLoading(boolean show) {
-        if (loadingOverlay != null) {
-            loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
-        }
-        if (progressBar != null) {
-            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        }
+        runOnUiThread(() -> {
+            if (loadingOverlay != null) {
+                loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+            if (progressBar != null) {
+                progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+        });
     }
 }

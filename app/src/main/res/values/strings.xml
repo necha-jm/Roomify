@@ -139,4 +139,42 @@
         libero vel nunc consequat, quis tincidunt nisl eleifend. Cras bibendum enim a justo luctus
         vestibulum. Fusce dictum libero quis erat maximus, vitae volutpat diam dignissim.
     </string>
+    <string name="owner_full_name">Owner Full Name</string>
+    <string name="owner_information">Owner Information</string>
+    <string name="list_your_property1">List Your Property</string>
+    <string name="property_location1">Property Location</string>
+    <string name="map_location">Map Location</string>
+    <string name="enter_manually">Enter Manually</string>
+    <string name="street_address">Street Address</string>
+    <string name="latitude">Latitude</string>
+    <string name="longitude">Longitude</string>
+    <string name="search_address">Search Address</string>
+    <string name="no_location_selected1">No location selected</string>
+    <string name="basic_information1">Basic Information</string>
+    <string name="property_title1">Property Title *</string>
+    <string name="description12">Description *</string>
+    <string name="price1">Price *</string>
+    <string name="property_type1">Property Type</string>
+    <string name="rooms12">Rooms</string>
+    <string name="bathrooms1">Bathrooms</string>
+    <string name="area1">Area</string>
+    <string name="amenities12">Amenities</string>
+    <string name="rules_and_contact">Rules and Contact</string>
+    <string name="house_rules_optional1">House Rules (Optional)</string>
+    <string name="phone_number1">Phone Number *</string>
+    <string name="email_address_optional1">Email Address (Optional)</string>
+    <string name="media1">Media</string>
+    <string name="add_photos1">Add Photos</string>
+    <string name="_0_5_photos">0/5 photos</string>
+    <string name="video1">Video</string>
+    <string name="contract1">Contract</string>
+    <string name="no_files_selected1">No files selected</string>
+    <string name="post_property1">Post Property</string>
+    <string name="search">Search</string>
+    <string name="make_decision">Make Decision</string>
+    <string name="english">English</string>
+    <string name="home">Home</string>
+    <string name="menu">Menu</string>
+    <string name="profile">Profile</string>
+    <string name="document_name">Document Name</string>
 </resources>

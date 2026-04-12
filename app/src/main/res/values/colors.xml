@@ -12,6 +12,7 @@
     <!-- Primary Colors -->
     <color name="primary_light">#C5CAE9</color>
 
+
     <!-- Accent Colors -->
     <color name="accent_dark">#F50057</color>
     <color name="red_error">#E74C3C</color>

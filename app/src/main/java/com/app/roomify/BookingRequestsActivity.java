@@ -1,5 +1,6 @@
 package com.app.roomify;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -7,87 +8,118 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.QuerySnapshot;
+import com.app.roomify.models.ApiResponse;
+import com.app.roomify.models.BookingResponse;
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class BookingRequestsActivity extends AppCompatActivity {
 
     private static final String TAG = "BookingRequests";
 
     private RecyclerView recyclerView;
-    private BookingAdapter adapter;
+    private BookingResponseAdapter adapter;
     private ProgressBar progressBar;
     private TextView tvNoRequests;
     private TextView tvErrorMessage;
 
-    private String currentUserId;
+    private long currentUserId = -1L;
     private String userRole;
-    private FirebaseFirestore db;
-    private FirebaseAuth mAuth;
+
+    // Backend components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_booking_requests);
 
-        // Initialize Firebase
-        db = FirebaseFirestore.getInstance();
-        mAuth = FirebaseAuth.getInstance();
+        // Initialize backend
+        tokenManager = TokenManager.getInstance(this);
+
+        // Debug: Check authentication status
+        Log.d(TAG, "=== AUTHENTICATION DEBUG ===");
+        Log.d(TAG, "isLoggedIn: " + tokenManager.isLoggedIn());
+        Log.d(TAG, "Token: " + (tokenManager.getToken() != null ? "Present (length: " + tokenManager.getToken().length() + ")" : "NULL"));
+
+        User currentUser = tokenManager.getUser();
+        if (currentUser != null) {
+            Log.d(TAG, "User Email: " + currentUser.getEmail());
+            Log.d(TAG, "User ID from object: " + currentUser.getId());
+        } else {
+            Log.d(TAG, "User object is NULL");
+        }
+
+        Long userIdFromManager = tokenManager.getUserId();
+        Log.d(TAG, "User ID from manager: " + userIdFromManager);
+        Log.d(TAG, "==========================");
+
+        // Check if user is logged in
+        if (!tokenManager.isLoggedIn()) {
+            Toast.makeText(this, "Please login to view bookings", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        // Get user ID - try multiple methods
+        if (userIdFromManager != null && userIdFromManager > 0) {
+            currentUserId = userIdFromManager;
+        } else if (currentUser != null && currentUser.getId() > 0) {
+            currentUserId = currentUser.getId();
+        } else {
+            Log.e(TAG, "Cannot get valid user ID!");
+            Toast.makeText(this, "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
+            tokenManager.clear();
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        Log.d(TAG, "Final User ID: " + currentUserId);
+
+        // Force reset client to ensure fresh token
+        APIClient.resetClient();
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
 
         // Initialize views
         recyclerView = findViewById(R.id.recyclerView);
         progressBar = findViewById(R.id.progressBar);
         tvNoRequests = findViewById(R.id.tvNoRequests);
-
-        // Add error message TextView to layout if not present
         tvErrorMessage = findViewById(R.id.tvErrorMessage);
-        if (tvErrorMessage == null) {
-            tvErrorMessage = new TextView(this);
-        }
-
-        // Get user info
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser != null) {
-            currentUserId = currentUser.getUid();
-        }
 
         userRole = getIntent().getStringExtra("role");
-
-        Log.d(TAG, "=== START ===");
-        Log.d(TAG, "User ID: " + currentUserId);
-        Log.d(TAG, "Role: " + userRole);
-
-        // Check if user is logged in
-        if (currentUserId == null || currentUserId.isEmpty()) {
-            Log.e(TAG, "User not logged in!");
-            Toast.makeText(this, "Please login to view bookings", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
+        if (userRole == null) {
+            userRole = "tenant";
         }
 
-        setupRecyclerView();
+        Log.d(TAG, "Role: " + userRole);
 
-        // Load booking requests
+        setupRecyclerView();
         loadBookingRequests();
     }
 
     private void setupRecyclerView() {
-        adapter = new BookingAdapter(new ArrayList<>(), this::onBookingAction);
+        adapter = new BookingResponseAdapter(new ArrayList<>(), this::onBookingAction);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(adapter);
     }
@@ -108,460 +140,254 @@ public class BookingRequestsActivity extends AppCompatActivity {
     }
 
     private void loadUserRequests() {
-        Log.d(TAG, "Loading user requests for: " + currentUserId);
+        Log.d(TAG, "Loading user requests for user ID: " + currentUserId);
 
-        // Query user's bookings from users/{userId}/bookings
-        db.collection("users")
-                .document(currentUserId)
-                .collection("bookings")
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .get()
-                .addOnCompleteListener(task -> {
-                    progressBar.setVisibility(View.GONE);
+        Call<ApiResponse<List<BookingResponse>>> call =
+                apiInterface.getUserBookings(currentUserId);
 
-                    if (task.isSuccessful()) {
-                        List<BookingRequest> requests = new ArrayList<>();
-                        QuerySnapshot snapshot = task.getResult();
+        call.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                   Response<ApiResponse<List<BookingResponse>>> response) {
 
-                        Log.d(TAG, "Found " + snapshot.size() + " bookings for user");
+                progressBar.setVisibility(View.GONE);
 
-                        for (DocumentSnapshot doc : snapshot.getDocuments()) {
-                            BookingRequest request = doc.toObject(BookingRequest.class);
-                            if (request != null) {
-                                request.setId(doc.getId());
+                if (response.isSuccessful() && response.body() != null) {
+                    ApiResponse<List<BookingResponse>> apiResponse = response.body();
 
-                                // Ensure all required fields are set
-                                if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
-                                    String roomIdFromDoc = doc.getString("roomId");
-                                    if (roomIdFromDoc != null) {
-                                        request.setRoomId(roomIdFromDoc);
-                                    } else {
-                                        Log.e(TAG, "Booking missing roomId: " + doc.getId());
-                                        continue; // Skip this booking
-                                    }
-                                }
+                    if (apiResponse.isSuccess()) {
+                        List<BookingResponse> requests = apiResponse.getData();
 
-                                if (request.getRoomTitle() == null || request.getRoomTitle().isEmpty()) {
-                                    request.setRoomTitle("Loading...");
-                                    // Try to fetch room title
-                                    fetchRoomTitle(request);
-                                }
-
-                                if (request.getStatus() == null || request.getStatus().isEmpty()) {
-                                    request.setStatus("pending");
-                                }
-
-                                if (request.getTimestamp() == 0) {
-                                    Long timestamp = doc.getLong("timestamp");
-                                    if (timestamp != null) {
-                                        request.setTimestamp(timestamp);
-                                    } else {
-                                        request.setTimestamp(System.currentTimeMillis());
-                                    }
-                                }
-
-                                requests.add(request);
-                                Log.d(TAG, "Added booking: " + request.getId() +
-                                        " - Room: " + request.getRoomTitle() +
-                                        " - Status: " + request.getStatus());
-                            } else {
-                                Log.w(TAG, "Failed to convert document to BookingRequest: " + doc.getId());
-                            }
-                        }
-
-                        adapter.setRequests(requests);
-
-                        if (requests.isEmpty()) {
+                        if (requests != null && !requests.isEmpty()) {
+                            Log.d(TAG, "Found " + requests.size() + " bookings for user");
+                            adapter.setBookings(requests);
+                        } else {
                             tvNoRequests.setVisibility(View.VISIBLE);
                             tvNoRequests.setText("No booking requests found");
                         }
-
                     } else {
-                        Log.e(TAG, "Error loading user bookings", task.getException());
-                        Toast.makeText(this, "Error loading bookings: " +
-                                task.getException().getMessage(), Toast.LENGTH_LONG).show();
                         tvNoRequests.setVisibility(View.VISIBLE);
-                        tvNoRequests.setText("Error loading bookings");
+                        tvNoRequests.setText(apiResponse.getMessage());
                     }
-                });
-    }
+                } else if (response.code() == 401 || response.code() == 403) {
+                    Log.e(TAG, "Authentication failed - Code: " + response.code());
+                    tvNoRequests.setVisibility(View.VISIBLE);
+                    tvNoRequests.setText("Session expired. Please login again.");
+                    // Clear token and redirect to login
+                    tokenManager.clear();
+                    Intent intent = new Intent(BookingRequestsActivity.this, LoginActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
+                    finish();
+                } else {
+                    tvNoRequests.setVisibility(View.VISIBLE);
+                    tvNoRequests.setText("Error loading bookings");
+                    Log.e(TAG, "Response error - Code: " + response.code());
+                }
+            }
 
-    private void fetchRoomTitle(BookingRequest request) {
-        if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
-            return;
-        }
-
-        db.collection("rooms")
-                .document(request.getRoomId())
-                .get()
-                .addOnSuccessListener(doc -> {
-                    if (doc.exists()) {
-                        String title = doc.getString("title");
-                        if (title != null && !title.isEmpty()) {
-                            request.setRoomTitle(title);
-                            adapter.notifyDataSetChanged();
-                        }
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to fetch room title", e);
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<List<BookingResponse>>> call,
+                                  Throwable t) {
+                progressBar.setVisibility(View.GONE);
+                tvNoRequests.setVisibility(View.VISIBLE);
+                tvNoRequests.setText("Network error: " + t.getMessage());
+                Log.e(TAG, "Network error", t);
+            }
+        });
     }
 
     private void loadOwnerRequests() {
-        Log.d(TAG, "Loading owner requests for: " + currentUserId);
+        Log.d(TAG, "Loading owner requests for user ID: " + currentUserId);
 
-        // First, get all rooms owned by this user
-        db.collection("rooms")
-                .whereEqualTo("postedBy", currentUserId)
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        QuerySnapshot roomSnapshot = task.getResult();
-                        Log.d(TAG, "Found " + roomSnapshot.size() + " rooms owned");
+        Call<ApiResponse<List<BookingResponse>>> call =
+                apiInterface.getOwnerBookings(currentUserId);
 
-                        if (roomSnapshot.isEmpty()) {
-                            progressBar.setVisibility(View.GONE);
+        call.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                   Response<ApiResponse<List<BookingResponse>>> response) {
+
+                progressBar.setVisibility(View.GONE);
+
+                if (response.isSuccessful() && response.body() != null) {
+                    ApiResponse<List<BookingResponse>> apiResponse = response.body();
+
+                    if (apiResponse.isSuccess()) {
+                        List<BookingResponse> bookings = apiResponse.getData();
+
+                        if (bookings != null && !bookings.isEmpty()) {
+                            Log.d(TAG, "Found " + bookings.size() + " booking requests");
+                            adapter.setBookings(bookings);
+                        } else {
                             tvNoRequests.setVisibility(View.VISIBLE);
-                            tvNoRequests.setText("You don't own any rooms yet");
-                            return;
+                            tvNoRequests.setText("No booking requests for your rooms");
                         }
-
-                        adapter.clearRequests();
-
-                        // Process each room's bookings
-                        for (DocumentSnapshot roomDoc : roomSnapshot.getDocuments()) {
-                            String roomId = roomDoc.getId();
-                            String roomTitle = roomDoc.getString("title");
-
-                            if (roomTitle == null || roomTitle.isEmpty()) {
-                                roomTitle = "Unknown Room";
-                            }
-
-                            Log.d(TAG, "Checking bookings for room: " + roomId + " - " + roomTitle);
-
-                            // Query bookings for this room
-                            String finalRoomTitle = roomTitle;
-                            db.collection("rooms")
-                                    .document(roomId)
-                                    .collection("bookings")
-                                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                                    .get()
-                                    .addOnCompleteListener(bookingTask -> {
-                                        if (bookingTask.isSuccessful()) {
-                                            QuerySnapshot bookingSnapshot = bookingTask.getResult();
-                                            Log.d(TAG, "Room " + roomId + " has " + bookingSnapshot.size() + " bookings");
-
-                                            for (DocumentSnapshot bookingDoc : bookingSnapshot.getDocuments()) {
-                                                // Try to get booking data
-                                                Map<String, Object> bookingData = bookingDoc.getData();
-                                                if (bookingData == null) {
-                                                    Log.w(TAG, "Booking data is null for: " + bookingDoc.getId());
-                                                    continue;
-                                                }
-
-                                                BookingRequest request = new BookingRequest();
-                                                request.setId(bookingDoc.getId());
-                                                request.setRoomId(roomId);
-                                                request.setRoomTitle(finalRoomTitle);
-
-                                                // Get user ID from booking
-                                                String userId = (String) bookingData.get("userId");
-                                                if (userId == null || userId.isEmpty()) {
-                                                    Log.e(TAG, "Booking missing userId: " + bookingDoc.getId());
-                                                    continue; // Skip this booking
-                                                }
-                                                request.setUserId(userId);
-
-                                                // Get status
-                                                String status = (String) bookingData.get("status");
-                                                request.setStatus(status != null ? status : "pending");
-
-                                                // Get timestamp
-                                                Long timestamp = (Long) bookingData.get("timestamp");
-                                                request.setTimestamp(timestamp != null ? timestamp : System.currentTimeMillis());
-
-                                                // Get booking date
-                                                String bookingDate = (String) bookingData.get("bookingDate");
-                                                request.setBookingDate(bookingDate != null ? bookingDate : "");
-
-                                                // Now fetch user details
-                                                fetchUserDetails(request, userId);
-                                            }
-                                        } else {
-                                            Log.e(TAG, "Error loading bookings for room: " + roomId,
-                                                    bookingTask.getException());
-                                        }
-
-                                        // Check if all rooms have been processed
-                                        adapter.notifyDataSetChanged();
-                                    });
-                        }
-
-                        // Hide progress bar after a delay
-                        new android.os.Handler().postDelayed(() -> {
-                            progressBar.setVisibility(View.GONE);
-                            if (adapter.getItemCount() == 0) {
-                                tvNoRequests.setVisibility(View.VISIBLE);
-                                tvNoRequests.setText("No booking requests for your rooms");
-                            }
-                        }, 2000);
-
                     } else {
-                        progressBar.setVisibility(View.GONE);
-                        Exception e = task.getException();
-                        Log.e(TAG, "Error loading rooms", e);
-                        Toast.makeText(this, "Error loading rooms: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         tvNoRequests.setVisibility(View.VISIBLE);
-                        tvNoRequests.setText("Error loading rooms");
+                        tvNoRequests.setText(apiResponse.getMessage());
+                        Log.e(TAG, "API Error: " + apiResponse.getMessage());
                     }
-                });
+                } else if (response.code() == 401 || response.code() == 403) {
+                    Log.e(TAG, "Authentication failed - Code: " + response.code());
+                    tvNoRequests.setVisibility(View.VISIBLE);
+                    tvNoRequests.setText("Session expired. Please login again.");
+                    tokenManager.clear();
+                    Intent intent = new Intent(BookingRequestsActivity.this, LoginActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
+                    finish();
+                } else {
+                    tvNoRequests.setVisibility(View.VISIBLE);
+                    tvNoRequests.setText("Error loading bookings");
+                    Log.e(TAG, "Response error - Code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
+                progressBar.setVisibility(View.GONE);
+                tvNoRequests.setVisibility(View.VISIBLE);
+                tvNoRequests.setText("Network error: " + t.getMessage());
+                Log.e(TAG, "Network error", t);
+            }
+        });
     }
 
-    private void fetchUserDetails(BookingRequest request, String userId) {
-        db.collection("users")
-                .document(userId)
-                .get()
-                .addOnSuccessListener(userDoc -> {
-                    if (userDoc.exists()) {
-                        // Get user name
-                        String userName = userDoc.getString("name");
-                        if (userName == null || userName.isEmpty()) {
-                            userName = userDoc.getString("fullName");
-                        }
-                        if (userName == null || userName.isEmpty()) {
-                            userName = "User";
-                        }
-                        request.setUserName(userName);
-
-                        // Get user phone
-                        String userPhone = userDoc.getString("phone");
-                        if (userPhone == null || userPhone.isEmpty()) {
-                            userPhone = userDoc.getString("contactPhone");
-                        }
-                        request.setUserPhone(userPhone != null ? userPhone : "");
-
-                        // Add to adapter
-                        adapter.addRequest(request);
-                        Log.d(TAG, "Added booking with user details: " + userName + " - " + request.getRoomTitle());
-                    } else {
-                        Log.w(TAG, "User document not found for ID: " + userId);
-                        request.setUserName("Unknown User");
-                        adapter.addRequest(request);
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to fetch user details", e);
-                    request.setUserName("Unknown User");
-                    adapter.addRequest(request);
-                });
-    }
-
-    private void onBookingAction(BookingRequest request, String action) {
-        // Validate request has required fields
-        if (request == null) {
-            Log.e(TAG, "onBookingAction: request is null");
-            Toast.makeText(this, "Error: Invalid booking request", Toast.LENGTH_SHORT).show();
+    private void onBookingAction(BookingResponse booking, String action) {
+        if (booking == null || booking.getId() == null) {
+            Log.e(TAG, "Invalid booking");
+            Toast.makeText(this, "Error: Invalid booking", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        if (request.getId() == null || request.getId().isEmpty()) {
-            Log.e(TAG, "onBookingAction: booking ID is null or empty");
-            Toast.makeText(this, "Error: Invalid booking ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (request.getRoomId() == null || request.getRoomId().isEmpty()) {
-            Log.e(TAG, "onBookingAction: room ID is null or empty");
-            Toast.makeText(this, "Error: Invalid room ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (request.getUserId() == null || request.getUserId().isEmpty()) {
-            Log.e(TAG, "onBookingAction: user ID is null or empty");
-            Toast.makeText(this, "Error: Cannot process booking - missing user ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Log.d(TAG, "onBookingAction: " + action + " - Booking ID: " + request.getId() +
-                ", Room ID: " + request.getRoomId() +
-                ", User ID: " + request.getUserId());
+        Log.d(TAG, "onBookingAction: " + action + " - Booking ID: " + booking.getId());
 
         switch (action) {
             case "accept":
-                acceptBooking(request);
+                acceptBooking(booking);
                 break;
             case "reject":
-                rejectBooking(request);
+                rejectBooking(booking);
                 break;
             case "cancel":
-                cancelBooking(request);
+                cancelBooking(booking);
                 break;
             case "delete":
-                deleteBooking(request);
+                deleteBooking(booking);
                 break;
         }
     }
 
-    private void acceptBooking(BookingRequest request) {
-        String roomId = request.getRoomId();
-        String bookingId = request.getId();
-        String userId = request.getUserId();
+    private void acceptBooking(BookingResponse booking) {
+        Log.d(TAG, "Accepting booking - ID: " + booking.getId());
 
-        Log.d(TAG, "Accepting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
+        Call<ApiResponse<Void>> call = apiInterface.acceptBooking(booking.getId());
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Log.d(TAG, "✅ Booking accepted successfully");
+                    Toast.makeText(BookingRequestsActivity.this, "Booking accepted!", Toast.LENGTH_SHORT).show();
+                    booking.setStatus("ACCEPTED");
+                    adapter.updateBooking(booking);
+                } else if (response.code() == 401 || response.code() == 403) {
+                    handleSessionExpired();
+                } else {
+                    String errorMsg = response.body() != null ? response.body().getMessage() : "Server error";
+                    Toast.makeText(BookingRequestsActivity.this, "Failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                }
+            }
 
-        // Update in ROOM bookings collection
-        db.collection("rooms")
-                .document(roomId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "approved")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ Room booking status updated to approved");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to update room booking", e);
-                });
-
-        // Update in USER bookings collection
-        db.collection("users")
-                .document(userId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "approved")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ User booking status updated to approved");
-                    Toast.makeText(this, "Booking accepted!", Toast.LENGTH_SHORT).show();
-                    request.setStatus("approved");
-                    adapter.notifyDataSetChanged();
-
-                    // Send notification to user
-                    sendNotificationToUser(userId, "Booking Approved",
-                            "Your booking for " + request.getRoomTitle() + " has been approved!");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to update user booking", e);
-                    Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void rejectBooking(BookingRequest request) {
-        String roomId = request.getRoomId();
-        String bookingId = request.getId();
-        String userId = request.getUserId();
+    private void rejectBooking(BookingResponse booking) {
+        Log.d(TAG, "Rejecting booking - ID: " + booking.getId());
 
-        Log.d(TAG, "Rejecting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
+        Call<ApiResponse<Void>> call = apiInterface.rejectBooking(booking.getId());
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Log.d(TAG, "✅ Booking rejected successfully");
+                    Toast.makeText(BookingRequestsActivity.this, "Booking rejected", Toast.LENGTH_SHORT).show();
+                    booking.setStatus("REJECTED");
+                    adapter.updateBooking(booking);
+                } else if (response.code() == 401 || response.code() == 403) {
+                    handleSessionExpired();
+                } else {
+                    Toast.makeText(BookingRequestsActivity.this, "Failed to reject booking", Toast.LENGTH_SHORT).show();
+                }
+            }
 
-        // Update in ROOM bookings collection
-        db.collection("rooms")
-                .document(roomId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "rejected")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ Room booking status updated to rejected");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, " Failed to update room booking", e);
-                });
-
-        // Update in USER bookings collection
-        db.collection("users")
-                .document(userId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "rejected")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ User booking status updated to rejected");
-                    Toast.makeText(this, "Booking rejected", Toast.LENGTH_SHORT).show();
-                    request.setStatus("rejected");
-                    adapter.notifyDataSetChanged();
-
-                    // Send notification to user
-                    sendNotificationToUser(userId, "Booking Rejected",
-                            "Your booking for " + request.getRoomTitle() + " has been rejected.");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to update user booking", e);
-                    Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void cancelBooking(BookingRequest request) {
-        String roomId = request.getRoomId();
-        String bookingId = request.getId();
-        String userId = request.getUserId();
+    private void cancelBooking(BookingResponse booking) {
+        Log.d(TAG, "Cancelling booking - ID: " + booking.getId());
 
-        Log.d(TAG, "Cancelling booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
+        Call<ApiResponse<Void>> call = apiInterface.cancelBooking(booking.getId());
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Log.d(TAG, "✅ Booking cancelled successfully");
+                    Toast.makeText(BookingRequestsActivity.this, "Booking cancelled", Toast.LENGTH_SHORT).show();
+                    adapter.removeBooking(booking);
+                } else if (response.code() == 401 || response.code() == 403) {
+                    handleSessionExpired();
+                } else {
+                    Toast.makeText(BookingRequestsActivity.this, "Failed to cancel booking", Toast.LENGTH_SHORT).show();
+                }
+            }
 
-        // Update in ROOM bookings collection
-        db.collection("rooms")
-                .document(roomId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "cancelled")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ Room booking status updated to cancelled");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to update room booking", e);
-                });
-
-        // Update in USER bookings collection
-        db.collection("users")
-                .document(userId)
-                .collection("bookings")
-                .document(bookingId)
-                .update("status", "cancelled")
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ User booking status updated to cancelled");
-                    Toast.makeText(this, "Booking cancelled", Toast.LENGTH_SHORT).show();
-                    adapter.removeRequest(request);
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, " Failed to update user booking", e);
-                    Toast.makeText(this, "Error updating user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void deleteBooking(BookingRequest request) {
-        String roomId = request.getRoomId();
-        String bookingId = request.getId();
-        String userId = request.getUserId();
+    private void deleteBooking(BookingResponse booking) {
+        Log.d(TAG, "Deleting booking - ID: " + booking.getId());
 
-        Log.d(TAG, "Deleting booking - Room: " + roomId + ", Booking: " + bookingId + ", User: " + userId);
+        Call<ApiResponse<Void>> call = apiInterface.deleteBooking(booking.getId());
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Log.d(TAG, "✅ Booking deleted successfully");
+                    Toast.makeText(BookingRequestsActivity.this, "Booking deleted", Toast.LENGTH_SHORT).show();
+                    adapter.removeBooking(booking);
+                } else if (response.code() == 401 || response.code() == 403) {
+                    handleSessionExpired();
+                } else {
+                    Toast.makeText(BookingRequestsActivity.this, "Failed to delete booking", Toast.LENGTH_SHORT).show();
+                }
+            }
 
-        // Delete from ROOM bookings collection
-        db.collection("rooms")
-                .document(roomId)
-                .collection("bookings")
-                .document(bookingId)
-                .delete()
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ Room booking deleted");
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to delete room booking", e);
-                });
-
-        // Delete from USER bookings collection
-        db.collection("users")
-                .document(userId)
-                .collection("bookings")
-                .document(bookingId)
-                .delete()
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "✅ User booking deleted");
-                    Toast.makeText(this, "Booking deleted", Toast.LENGTH_SHORT).show();
-                    adapter.removeRequest(request);
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Failed to delete user booking", e);
-                    Toast.makeText(this, "Error deleting user booking: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void sendNotificationToUser(String userId, String title, String message) {
-        FirebaseUtils.sendNotificationToUser(userId, title, message, null);
+    private void handleSessionExpired() {
+        Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show();
+        tokenManager.clear();
+        Intent intent = new Intent(this, LoginActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 }

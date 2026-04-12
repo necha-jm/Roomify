@@ -96,7 +96,7 @@ public class MainMapActivity extends AppCompatActivity {
                     roomsList.clear();
                     for (QueryDocumentSnapshot document : querySnapshot) {
                         Room room = document.toObject(Room.class);
-                        room.setId(document.getId());
+                        room.setId(Long.parseLong(document.getId()));
                         roomsList.add(room);
                     }
                     addRoomMarkersToMap();

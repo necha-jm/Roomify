@@ -4,10 +4,8 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.location.Address;
@@ -63,9 +61,16 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
+
+import com.app.roomify.database.RoomEntity;
+import com.app.roomify.database.RoomifyDatabase;
+import com.app.roomify.models.ApiResponse;
+import com.app.roomify.models.BookingResponse;  // ADDED: Import BookingResponse
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
+import com.app.roomify.sync.OfflineSyncManager;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -73,6 +78,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class LocationMap extends AppCompatActivity implements OnMapReadyCallback {
 
@@ -80,21 +92,22 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private static final int REQUEST_CHECK_SETTINGS = 101;
     private static final int LOCATION_TIMEOUT = 10000;
     private static final String TAG = "LocationMap";
-    private static final String ACTION_NEW_ROOM = "com.app.roomify.NEW_ROOM_ADDED";
 
     private GoogleMap myMap;
-    private BroadcastReceiver roomReceiver;
-    private BroadcastReceiver gpsStatusReceiver;
     private Location currentLocation;
     private FusedLocationProviderClient fusedLocationProviderClient;
-    private FirebaseFirestore db;
-    private FirebaseAuth mAuth;
     private GoogleSignInClient googleSignInClient;
 
     private boolean isFirstLocationUpdate = true;
     private boolean isMapReady = false;
     private boolean isLocationRequestActive = false;
     private boolean hasShownLocationDialog = false;
+
+    // Backend Components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
+    private Long currentUserId = null;
+    private ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     // UI Elements
     private MaterialCardView searchCard;
@@ -108,8 +121,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     private ImageView btnSettings;
     private LinearLayout bottomSheet, tabMenu;
     private com.google.android.material.bottomsheet.BottomSheetBehavior<LinearLayout> bottomSheetBehavior;
-
-    // New UI Elements for search button
     private com.google.android.material.button.MaterialButton btnSearchAddress;
     private View overlayView;
     private com.google.android.material.progressindicator.CircularProgressIndicator progressIndicator;
@@ -123,32 +134,47 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
     // Data holders
     private final List<Room> roomsList = new ArrayList<>();
-    private final Map<Marker, Room> markerRoomMap = new HashMap<>();
-    private Map<String, String> roomBookingStatus = new HashMap<>();
-    private List<String> requestedRoomIds = new ArrayList<>();
+    private final Map<Marker, Room> markerRoomMap = new ConcurrentHashMap<>();
+
+    // Track booking status for each room
+    private final Map<Long, String> roomBookingStatus = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
         LocaleHelper.loadLocale(this);
+        super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_location_map);
 
-        mAuth = FirebaseAuth.getInstance();
+        // Initialize backend components
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
+
+        // Get current user ID
+        User currentUser = tokenManager.getUser();
+
+        if (!tokenManager.isLoggedIn() || currentUser == null) {
+            Log.e(TAG, "User not logged in or session expired");
+            Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show();
+            startActivity(new Intent(this, LoginActivity.class));
+            finish();
+            return;
+        }
+
+        currentUserId = currentUser.getId();
+        Log.d(TAG, "Logged in user ID: " + currentUserId);
+
+        // Initialize Google Sign-In
         googleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN);
 
         Log.d(TAG, "onCreate started");
 
-        initializeReceivers();
-        db = FirebaseFirestore.getInstance();
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
 
         initializeViews();
         setupClickListeners();
         setupSearch();
         setupSearchButton();
-
-        // Listen to user bookings for real-time updates
-        listenToUserBookings();
 
         // Check location and permissions
         if (!isLocationEnabled()) {
@@ -160,81 +186,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         Log.d(TAG, "onCreate completed");
     }
 
-    private void initializeReceivers() {
-        roomReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (ACTION_NEW_ROOM.equals(intent.getAction())) {
-                    Log.d(TAG, "New room added, refreshing map");
-                    if (myMap != null) {
-                        loadRoomsOnMap();
-                    }
-                }
-            }
-        };
-
-        gpsStatusReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (LocationManager.PROVIDERS_CHANGED_ACTION.equals(intent.getAction())) {
-                    boolean isGpsEnabled = isLocationEnabled();
-                    Log.d(TAG, "GPS status changed: " + (isGpsEnabled ? "Enabled" : "Disabled"));
-
-                    if (isGpsEnabled && currentLocation == null && !isLocationRequestActive) {
-                        if (ActivityCompat.checkSelfPermission(LocationMap.this,
-                                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                            getLastLocationWithTimeout();
-                            startLocationUpdates();
-                        }
-                    }
-                }
-            }
-        };
-
-        IntentFilter roomFilter = new IntentFilter(ACTION_NEW_ROOM);
-        ContextCompat.registerReceiver(this, roomReceiver, roomFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
-
-        IntentFilter gpsFilter = new IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION);
-        registerReceiver(gpsStatusReceiver, gpsFilter);
-    }
-
-    private void listenToUserBookings() {
-        String userId = FirebaseUtils.getCurrentUserId();
-        if (userId == null || userId.isEmpty()) {
-            Log.d(TAG, "User not logged in, skipping booking listener");
-            return;
-        }
-
-        FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(userId)
-                .collection("bookings")
-                .addSnapshotListener((snapshots, error) -> {
-                    if (error != null) {
-                        Log.e(TAG, "Error loading bookings", error);
-                        return;
-                    }
-
-                    roomBookingStatus.clear();
-
-                    if (snapshots != null) {
-                        for (DocumentSnapshot doc : snapshots.getDocuments()) {
-                            String roomId = doc.getString("roomId");
-                            String status = doc.getString("status");
-                            if (roomId != null && status != null) {
-                                roomBookingStatus.put(roomId, status);
-                            }
-                        }
-                    }
-
-                    Log.d(TAG, "Booking status updated: " + roomBookingStatus.size());
-
-                    if (myMap != null) {
-                        loadRoomsOnMap();
-                    }
-                });
-    }
-
     private void initializeViews() {
         Log.d(TAG, "Initializing views");
         try {
@@ -243,7 +194,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             fabLocation = findViewById(R.id.fab_location);
             tabSelect = findViewById(R.id.tab_SELECT);
 
-            // Initialize new search button
             btnSearchAddress = findViewById(R.id.btn_search_address);
             overlayView = findViewById(R.id.overlayView);
             progressIndicator = findViewById(R.id.progressIndicator);
@@ -275,20 +225,25 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void navigateBasedOnRole() {
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (!tokenManager.isLoggedIn()) {
+            Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show();
+            startActivity(new Intent(this, LoginActivity.class));
+            return;
+        }
 
-        FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(userId)
-                .get()
-                .addOnSuccessListener(doc -> {
-                    String role = doc.getString("role");
-                    if ("tenant".equals(role)) {
-                        startActivity(new Intent(this, DashboardActivity.class));
-                    } else if ("owner".equals(role)) {
-                        startActivity(new Intent(this, OwnerDashboard.class));
-                    }
-                });
+        User user = tokenManager.getUser();
+
+        if (user == null) {
+            Toast.makeText(this, "Session error. Please login again.", Toast.LENGTH_SHORT).show();
+            startActivity(new Intent(this, LoginActivity.class));
+            return;
+        }
+
+        if ("owner".equals(user.getRole())) {
+            startActivity(new Intent(this, OwnerDashboard.class));
+        } else {
+            startActivity(new Intent(this, DashboardActivity.class));
+        }
     }
 
     private void setupClickListeners() {
@@ -428,7 +383,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             return;
         }
 
-        // Keep keyboard search functionality
         searchEditText.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH ||
                     (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
@@ -446,7 +400,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             return false;
         });
 
-        // Clear button functionality
         searchEditText.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 Drawable drawableRight = searchEditText.getCompoundDrawables()[2];
@@ -498,10 +451,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         Address address = addresses.get(0);
                         LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
 
-                        // Animate camera to the location
                         myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
 
-                        // Add or update search marker
                         if (searchMarker == null) {
                             searchMarker = myMap.addMarker(new MarkerOptions()
                                     .position(latLng)
@@ -794,7 +745,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         myMap = googleMap;
         isMapReady = true;
 
-        // Configure map settings
         myMap.getUiSettings().setZoomControlsEnabled(true);
         myMap.getUiSettings().setCompassEnabled(true);
         myMap.getUiSettings().setMyLocationButtonEnabled(false);
@@ -805,7 +755,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             myMap.setMyLocationEnabled(true);
         }
 
-        // Set default location (Dar es Salaam)
         LatLng defaultLocation;
         if (currentLocation != null) {
             defaultLocation = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
@@ -816,31 +765,16 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 14f));
 
-        // Load rooms on map
-        loadRoomsOnMap();
+        // Load rooms from backend with offline support
+        loadRoomsFromBackend();
 
-        // Set marker click listener
         myMap.setOnMarkerClickListener(marker -> {
-            // Don't handle current location or search markers
             if ((currentLocationMarker != null && currentLocationMarker.equals(marker)) ||
                     (searchMarker != null && searchMarker.equals(marker))) {
                 return false;
             }
 
-            // Get room from map
             Room room = markerRoomMap.get(marker);
-
-            // Fallback: try to find by tag
-            if (room == null && marker.getTag() != null) {
-                String roomId = (String) marker.getTag();
-                for (Room r : roomsList) {
-                    if (r.getId().equals(roomId)) {
-                        room = r;
-                        break;
-                    }
-                }
-            }
-
             if (room == null) {
                 Log.e(TAG, "No room found for marker");
                 return true;
@@ -858,113 +792,258 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         });
     }
 
-    private void loadRoomsOnMap() {
-        if (db == null || myMap == null) {
-            Log.d(TAG, "Cannot load rooms: db=" + (db != null) + ", map=" + (myMap != null));
+    // ==================== OFFLINE SUPPORT METHODS ====================
+
+    private void loadRoomsFromBackend() {
+        if (apiInterface == null || myMap == null) {
+            Log.d(TAG, "Cannot load rooms");
             return;
         }
 
-        db.collection("rooms")
-                .whereEqualTo("isAvailable", true)
-                .addSnapshotListener((snapshots, error) -> {
-                    if (error != null) {
-                        Log.e(TAG, "Firestore error: " + error.getMessage());
-                        return;
+        showLoading(true);
+
+        // Try to load from server first
+        Call<List<Room>> call = apiInterface.getAllRooms();
+        call.enqueue(new Callback<List<Room>>() {
+            @Override
+            public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    List<Room> rooms = response.body();
+                    if (rooms != null && !rooms.isEmpty()) {
+                        roomsList.clear();
+                        roomsList.addAll(rooms);
+
+                        // Save to local database for offline use
+                        saveRoomsToLocalDatabase(rooms);
+
+                        // Fetch booking status
+                        fetchBookingStatusForRooms(rooms);
+                    } else {
+                        showLoading(false);
+                        Log.d(TAG, "No rooms available");
+                        loadRoomsFromLocalDatabase();
                     }
+                } else {
+                    showLoading(false);
+                    Log.e(TAG, "Failed to load rooms. Code: " + response.code());
+                    loadRoomsFromLocalDatabase();
+                    Toast.makeText(LocationMap.this, "Using cached data (offline mode)", Toast.LENGTH_SHORT).show();
+                }
+            }
 
-                    if (snapshots == null) return;
+            @Override
+            public void onFailure(Call<List<Room>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error loading rooms: " + t.getMessage());
+                loadRoomsFromLocalDatabase();
+                Toast.makeText(LocationMap.this, "Using cached data (offline mode)", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
 
-                    Log.d(TAG, "Received " + snapshots.size() + " rooms from Firestore");
+    private void loadRoomsFromLocalDatabase() {
+        ensureExecutor();
+        executorService.execute(() -> {
+            try {
+                RoomifyDatabase db = RoomifyDatabase.getInstance(this);
+                List<RoomEntity> roomEntities = db.roomDao().getAllAvailableRooms();
 
-                    // Save current location before clearing markers
-                    LatLng currentLocLatLng = null;
-                    if (currentLocation != null) {
-                        currentLocLatLng = new LatLng(
-                                currentLocation.getLatitude(),
-                                currentLocation.getLongitude()
-                        );
-                    }
-
-                    // Clear ONLY room markers, not location marker
-                    for (Marker marker : markerRoomMap.keySet()) {
-                        marker.remove();
-                    }
-
-                    roomsList.clear();
-                    markerRoomMap.clear();
-
-                    // Re-add or update current location marker
-                    if (currentLocLatLng != null) {
-                        if (currentLocationMarker == null) {
-                            currentLocationMarker = myMap.addMarker(
-                                    new MarkerOptions()
-                                            .position(currentLocLatLng)
-                                            .title("My Location")
-                                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
-                            );
-                        } else {
-                            currentLocationMarker.setPosition(currentLocLatLng);
+                runOnUiThread(() -> {
+                    if (roomEntities != null && !roomEntities.isEmpty()) {
+                        List<Room> rooms = new ArrayList<>();
+                        for (RoomEntity entity : roomEntities) {
+                            Room room = OfflineSyncManager.convertToRoom(entity);
+                            rooms.add(room);
                         }
+                        roomsList.clear();
+                        roomsList.addAll(rooms);
+
+                        // For offline mode, clear booking status and show all as available
+                        roomBookingStatus.clear();
+                        updateMapWithRooms(rooms);
+                        Log.d(TAG, "Loaded " + rooms.size() + " rooms from local database");
+                    } else {
+                        Log.d(TAG, "No cached rooms available");
+                        updateMapWithRooms(new ArrayList<>());
+                        Toast.makeText(this, "No rooms available offline. Please connect to internet.", Toast.LENGTH_LONG).show();
                     }
-
-                    // Add room markers
-                    for (DocumentSnapshot doc : snapshots.getDocuments()) {
-                        try {
-                            Room room = doc.toObject(Room.class);
-                            if (room == null) continue;
-
-                            room.setId(doc.getId());
-
-                            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
-
-                            roomsList.add(room);
-
-                            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
-
-                            String status = roomBookingStatus.get(room.getId());
-                            float markerColor = BitmapDescriptorFactory.HUE_BLUE;
-                            String snippet = "Price: $" + room.getPrice();
-
-                            if (status != null) {
-                                switch (status) {
-                                    case "pending":
-                                        markerColor = BitmapDescriptorFactory.HUE_ORANGE;
-                                        snippet = "⚠️ Requested";
-                                        break;
-                                    case "approved":
-                                        markerColor = BitmapDescriptorFactory.HUE_GREEN;
-                                        snippet = "✅ Approved";
-                                        break;
-                                    case "rejected":
-                                        markerColor = BitmapDescriptorFactory.HUE_RED;
-                                        snippet = "❌ Rejected";
-                                        break;
-                                    case "cancelled":
-                                        markerColor = BitmapDescriptorFactory.HUE_VIOLET;
-                                        snippet = "Cancelled";
-                                        break;
-                                }
-                            }
-
-                            Marker marker = myMap.addMarker(
-                                    new MarkerOptions()
-                                            .position(roomLocation)
-                                            .title(room.getTitle())
-                                            .snippet(snippet)
-                                            .icon(BitmapDescriptorFactory.defaultMarker(markerColor))
-                            );
-
-                            if (marker != null) {
-                                marker.setTag(room.getId());
-                                markerRoomMap.put(marker, room);
-                            }
-
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error processing room", e);
-                        }
-                    }
-                    Log.d(TAG, "Loaded " + roomsList.size() + " rooms with " + markerRoomMap.size() + " markers");
+                    showLoading(false);
                 });
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading from local database: " + e.getMessage());
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    updateMapWithRooms(new ArrayList<>());
+                });
+            }
+        });
+    }
+
+    private void saveRoomsToLocalDatabase(List<Room> rooms) {
+        ensureExecutor();
+        executorService.execute(() -> {
+            try {
+                RoomifyDatabase db = RoomifyDatabase.getInstance(this);
+                db.roomDao().deleteAllRooms();
+
+                for (Room room : rooms) {
+                    RoomEntity entity = OfflineSyncManager.convertToEntity(room);
+                    entity.setSynced(true);
+                    db.roomDao().insertRoom(entity);
+                }
+                Log.d(TAG, "Saved " + rooms.size() + " rooms to local database");
+            } catch (Exception e) {
+                Log.e(TAG, "Error saving to local database: " + e.getMessage());
+            }
+        });
+    }
+
+    // FIXED: Changed to use BookingResponse instead of BookingRequest
+    private void fetchBookingStatusForRooms(List<Room> rooms) {
+        if (currentUserId == null) {
+            // User not logged in, just show all rooms as available
+            showLoading(false);
+            updateMapWithRooms(rooms);
+            return;
+        }
+
+        final int[] processedCount = {0};
+        final int totalRooms = rooms.size();
+
+        if (totalRooms == 0) {
+            showLoading(false);
+            updateMapWithRooms(rooms);
+            return;
+        }
+
+        // Clear previous status
+        roomBookingStatus.clear();
+
+        for (Room room : rooms) {
+            // CHANGED: Use BookingResponse instead of BookingRequest
+            Call<ApiResponse<List<BookingResponse>>> bookingCall = apiInterface.checkUserBooking(currentUserId, room.getId());
+            final Long roomId = room.getId();
+
+            bookingCall.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+                @Override
+                public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                       Response<ApiResponse<List<BookingResponse>>> response) {
+                    processedCount[0]++;
+
+                    if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                        List<BookingResponse> bookings = response.body().getData();
+                        if (bookings != null && !bookings.isEmpty()) {
+                            String status = bookings.get(0).getStatus();
+                            roomBookingStatus.put(roomId, status);
+                            Log.d(TAG, "Room " + roomId + " has booking status: " + status);
+                        }
+                    }
+
+                    if (processedCount[0] == totalRooms) {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
+                    processedCount[0]++;
+                    Log.e(TAG, "Failed to fetch booking status for room: " + roomId, t);
+
+                    if (processedCount[0] == totalRooms) {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    }
+                }
+            });
+        }
+    }
+
+    private void updateMapWithRooms(List<Room> rooms) {
+        if (myMap == null) return;
+
+        // Save current location
+        LatLng currentLocLatLng = null;
+        if (currentLocation != null) {
+            currentLocLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+        }
+
+        // Clear only room markers
+        for (Marker marker : markerRoomMap.keySet()) {
+            marker.remove();
+        }
+
+        roomsList.clear();
+        markerRoomMap.clear();
+
+        // Re-add current location marker
+        if (currentLocLatLng != null) {
+            if (currentLocationMarker == null) {
+                currentLocationMarker = myMap.addMarker(
+                        new MarkerOptions()
+                                .position(currentLocLatLng)
+                                .title("My Location")
+                                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                );
+            } else {
+                currentLocationMarker.setPosition(currentLocLatLng);
+            }
+        }
+
+        // Add room markers with status-based colors
+        for (Room room : rooms) {
+            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
+
+            roomsList.add(room);
+            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
+
+            String status = roomBookingStatus.get(room.getId());
+            float markerColor = BitmapDescriptorFactory.HUE_BLUE;
+            String snippet = "Price: $" + room.getPrice();
+
+            if (status != null) {
+                switch (status.toUpperCase()) {
+                    case "PENDING":
+                        markerColor = BitmapDescriptorFactory.HUE_ORANGE;
+                        snippet = "⚠️ Pending Request";
+                        break;
+                    case "ACCEPTED":
+                    case "CONFIRMED":
+                        markerColor = BitmapDescriptorFactory.HUE_GREEN;
+                        snippet = "✅ Booking Approved";
+                        break;
+                    case "REJECTED":
+                        markerColor = BitmapDescriptorFactory.HUE_RED;
+                        snippet = "❌ Request Rejected";
+                        break;
+                    case "CANCELLED":
+                        markerColor = BitmapDescriptorFactory.HUE_VIOLET;
+                        snippet = "Cancelled";
+                        break;
+                    default:
+                        markerColor = BitmapDescriptorFactory.HUE_BLUE;
+                        snippet = "Available - $" + room.getPrice();
+                        break;
+                }
+            } else {
+                snippet = "Available - $" + room.getPrice();
+            }
+
+            Marker marker = myMap.addMarker(
+                    new MarkerOptions()
+                            .position(roomLocation)
+                            .title(room.getTitle())
+                            .snippet(snippet)
+                            .icon(BitmapDescriptorFactory.defaultMarker(markerColor))
+            );
+
+            if (marker != null) {
+                marker.setTag(room.getId());
+                markerRoomMap.put(marker, room);
+            }
+        }
+
+        Log.d(TAG, "Updated map with " + roomsList.size() + " room markers");
     }
 
     private void showAllRoomsOnMap() {
@@ -990,6 +1069,28 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
     }
 
+    private void ensureExecutor() {
+        if (executorService == null
+                || executorService.isShutdown()
+                || executorService.isTerminated()) {
+            executorService = Executors.newSingleThreadExecutor();
+        }
+    }
+
+    public void saveSingleRoomOffline(Room room) {
+        executorService.execute(() -> {
+            try {
+                RoomifyDatabase db = RoomifyDatabase.getInstance(this);
+                RoomEntity entity = OfflineSyncManager.convertToEntity(room);
+                entity.setSynced(false);
+                db.roomDao().insertRoom(entity);
+                Log.d(TAG, "Room saved offline: " + room.getId());
+            } catch (Exception e) {
+                Log.e(TAG, "Error saving room offline: " + e.getMessage());
+            }
+        });
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -1012,6 +1113,11 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         } else {
             requestLocationPermission();
         }
+
+        // Refresh rooms when returning to map
+        if (myMap != null) {
+            loadRoomsFromBackend();
+        }
     }
 
     @Override
@@ -1025,15 +1131,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            if (roomReceiver != null) unregisterReceiver(roomReceiver);
-            if (gpsStatusReceiver != null) unregisterReceiver(gpsStatusReceiver);
-        } catch (Exception e) {
-            Log.e(TAG, "Error unregistering receivers: " + e.getMessage());
-        }
         if (locationCallback != null && fusedLocationProviderClient != null) {
             fusedLocationProviderClient.removeLocationUpdates(locationCallback);
         }
+
     }
 
     @Override

@@ -1,15 +1,20 @@
 package com.app.roomify;
 
 import android.Manifest;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.location.Address;
 import android.location.Geocoder;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.ArrayAdapter;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -23,6 +28,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.documentfile.provider.DocumentFile;
 
 import com.bumptech.glide.Glide;
@@ -42,22 +48,28 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageReference;
-import com.google.firebase.storage.UploadTask;
 
+import com.app.roomify.models.ApiResponse;
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCallback {
 
@@ -67,6 +79,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private static final int VIDEO_PICK_REQUEST_CODE = 300;
     private static final int CONTRACT_PICK_REQUEST_CODE = 400;
     private static final int MAX_IMAGES = 5;
+    private static final int MAX_VIDEO_SIZE_MB = 10; // 10MB max video size
 
     // Views
     private SupportMapFragment mapFragment;
@@ -95,13 +108,12 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private String videoFileName = "";
     private String contractFileName = "";
     private Marker locationMarker;
+    private long createdRoomId = -1;
 
-    // Upload tracking
-    private boolean videoUploadComplete = false;
-    private boolean contractUploadComplete = false;
-    private String uploadedVideoUrl = "";
-    private String uploadedContractUrl = "";
-    private List<String> uploadedImageUrls = new ArrayList<>();
+    // Backend Components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
+    private Long currentUserId;
 
     // Property types
     private String[] propertyTypes = {"Apartment", "Single Room", "Studio", "House", "Shared Room", "Commercial"};
@@ -110,25 +122,18 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private String[] amenitiesList = {"WiFi", "Parking", "AC", "Security", "Water", "Electricity",
             "Furnished", "Kitchen", "Balcony", "Gym", "Pool", "Elevator"};
 
-    // Firebase
-    private FirebaseFirestore db;
-    private FirebaseStorage storage;
-    private FirebaseAuth mAuth;
-    private String currentRoomId;
-    private String authenticatedUserId;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_post_room);
 
-        // Initialize Firebase
-        db = FirebaseFirestore.getInstance();
-        storage = FirebaseStorage.getInstance();
-        mAuth = FirebaseAuth.getInstance();
+        // Initialize backend components
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
 
         // Check if user is logged in
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser == null) {
+        if (!tokenManager.isLoggedIn()) {
             Toast.makeText(this, "Please login to post a room", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(this, LoginActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -137,18 +142,8 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             return;
         }
 
-        authenticatedUserId = currentUser.getUid();
-        Log.d(TAG, "User authenticated with ID: " + authenticatedUserId);
-
-        // Subscribe to notifications
-        FirebaseMessaging.getInstance().subscribeToTopic("rooms")
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        Log.d("FCM", "Subscribed to rooms topic");
-                    }
-                });
-
-        setContentView(R.layout.activity_post_room);
+        currentUserId = tokenManager.getUserId();
+        Log.d(TAG, "User authenticated with ID: " + currentUserId);
 
         initializeViews();
         setupPropertyTypeSpinner();
@@ -277,6 +272,38 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 Log.e(TAG, "Error updating map location: " + e.getMessage());
             }
         }
+    }
+
+    private void sendNotificationForNewRoom(Room room) {
+        // Room object null check
+        if (room == null) {
+            Log.e(TAG, "Cannot send notification: Room is null");
+            return;
+        }
+
+        // For primitive long, check if ID is valid (not 0 or -1)
+        long roomId = room.getId();
+        if (roomId == 0 || roomId == -1) {
+            Log.e(TAG, "Cannot send notification: Invalid room ID: " + roomId);
+            return;
+        }
+
+        Call<ApiResponse<Void>> call = apiInterface.sendRoomNotification(roomId);
+        call.enqueue(new Callback<ApiResponse<Void>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Log.d(TAG, "✅ Notification sent to interested users for room: " + roomId);
+                } else {
+                    Log.e(TAG, "Failed to send notification. Code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
+                Log.e(TAG, "Failed to send notifications: " + t.getMessage(), t);
+            }
+        });
     }
 
     private void getAddressFromLocation(LatLng latLng) {
@@ -434,8 +461,16 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         selectedVideoUri = data.getData();
                         if (selectedVideoUri != null) {
                             videoFileName = getFileName(selectedVideoUri);
-                            updateSelectedFilesInfo();
-                            Toast.makeText(this, "✓ Video selected: " + videoFileName, Toast.LENGTH_LONG).show();
+
+                            long videoSize = getFileSize(selectedVideoUri);
+                            if (videoSize > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+                                Toast.makeText(this, "Video too large (" + (videoSize / (1024 * 1024)) + "MB). Please select a video under " + MAX_VIDEO_SIZE_MB + "MB", Toast.LENGTH_LONG).show();
+                                selectedVideoUri = null;
+                                videoFileName = "";
+                            } else {
+                                updateSelectedFilesInfo();
+                                Toast.makeText(this, "✓ Video selected: " + videoFileName, Toast.LENGTH_LONG).show();
+                            }
                         }
                         break;
                     case CONTRACT_PICK_REQUEST_CODE:
@@ -457,14 +492,44 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private String getFileName(Uri uri) {
         String fileName = "File";
         try {
-            DocumentFile documentFile = DocumentFile.fromSingleUri(this, uri);
-            if (documentFile != null && documentFile.getName() != null) {
-                fileName = documentFile.getName();
+            if (uri.getScheme().equals("content")) {
+                try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME);
+                        if (nameIndex >= 0) {
+                            fileName = cursor.getString(nameIndex);
+                        }
+                    }
+                }
+            } else {
+                fileName = new File(uri.getPath()).getName();
             }
         } catch (Exception e) {
             Log.e(TAG, "Error getting filename: " + e.getMessage());
         }
         return fileName;
+    }
+
+    private long getFileSize(Uri uri) {
+        long size = 0;
+        try {
+            if (uri.getScheme().equals("content")) {
+                try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int sizeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE);
+                        if (sizeIndex >= 0) {
+                            size = cursor.getLong(sizeIndex);
+                        }
+                    }
+                }
+            } else {
+                File file = new File(uri.getPath());
+                size = file.length();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting file size: " + e.getMessage());
+        }
+        return size;
     }
 
     private void handleImageSelection(Intent data) {
@@ -531,18 +596,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void validateAndSubmit() {
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser == null) {
-            Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(this, LoginActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-            return;
-        }
-
-        authenticatedUserId = currentUser.getUid();
-
         // Validate required fields
         String title = etRoomTitle.getText().toString().trim();
         String description = etDescription.getText().toString().trim();
@@ -604,87 +657,134 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             return;
         }
 
-        double price = Double.parseDouble(priceStr);
+        showLoading(true);
+
+        // FIXED: Create Room object instead of CreateRoomRequest
+        Room room = new Room();
+
+        // Basic info
+        room.setTitle(title);
+        room.setDescription(description);
+        room.setPrice(Double.parseDouble(priceStr));
+        room.setPropertyType(propertyTypes[spinnerPropertyType.getSelectedItemPosition()]);
+
+        // Location
+        room.setLatitude(selectedLatLng.latitude);
+        room.setLongitude(selectedLatLng.longitude);
+        room.setAddress(TextUtils.isEmpty(selectedAddress) ? "Location set" : selectedAddress);
+
+        // Contact info
+        room.setContactPhone(phone);
+        String email = etContactEmail.getText().toString().trim();
+        if (!TextUtils.isEmpty(email)) {
+            room.setContactEmail(email);
+        }
+        room.setOwnerName(ownerName);
+
+        // Amenities
+        room.setAmenities(selectedAmenities);
+
+        // Counts
         int roomsCount = 1;
         if (!TextUtils.isEmpty(etRoomsCount.getText().toString())) {
-            roomsCount = Integer.parseInt(etRoomsCount.getText().toString());
+            try {
+                roomsCount = Integer.parseInt(etRoomsCount.getText().toString());
+            } catch (NumberFormatException e) {}
         }
+        room.setRoomsCount(roomsCount);
+
         int bathroomsCount = 1;
         if (!TextUtils.isEmpty(etBathroomsCount.getText().toString())) {
-            bathroomsCount = Integer.parseInt(etBathroomsCount.getText().toString());
+            try {
+                bathroomsCount = Integer.parseInt(etBathroomsCount.getText().toString());
+            } catch (NumberFormatException e) {}
         }
-        String propertyType = propertyTypes[spinnerPropertyType.getSelectedItemPosition()];
-        String email = etContactEmail.getText().toString().trim();
+        room.setBathroomsCount(bathroomsCount);
+
+        // Area
         double area = 0;
         if (!TextUtils.isEmpty(etArea.getText().toString())) {
             try {
                 area = Double.parseDouble(etArea.getText().toString());
             } catch (NumberFormatException e) {}
         }
-        String rules = etRules.getText().toString().trim();
+        room.setArea(area);
 
-        showLoading(true);
-
-        // First create room document
-        currentRoomId = db.collection("rooms").document().getId();
-
-        Map<String, Object> room = new HashMap<>();
-        room.put("id", currentRoomId);
-        room.put("title", title);
-        room.put("description", description);
-        room.put("price", price);
-        room.put("latitude", selectedLatLng.latitude);
-        room.put("longitude", selectedLatLng.longitude);
-        room.put("address", TextUtils.isEmpty(selectedAddress) ? "Location set" : selectedAddress);
-        room.put("propertyType", propertyType);
-        room.put("contactPhone", phone);
-        room.put("contactEmail", email.isEmpty() ? "" : email);
-        room.put("ownerName", ownerName);
-        room.put("amenities", selectedAmenities);
-        room.put("imageCount", selectedImageUris.size());
-        room.put("hasVideo", false);  // Will update after upload
-        room.put("hasContract", false); // Will update after upload
-        room.put("videoUrl", "");
-        room.put("contractUrl", "");
-        room.put("createdAt", System.currentTimeMillis());
-        room.put("isAvailable", true);
-        room.put("roomsCount", roomsCount);
-        room.put("bathroomsCount", bathroomsCount);
-        room.put("postedBy", authenticatedUserId);
-        room.put("status", "active");
-        room.put("area", area);
-
-        if (!TextUtils.isEmpty(rules)) {
+        // Rules
+        String rulesText = etRules.getText().toString().trim();
+        if (!TextUtils.isEmpty(rulesText)) {
             List<String> rulesList = new ArrayList<>();
-            if (rules.contains(",")) {
-                for (String part : rules.split(",")) {
+            if (rulesText.contains(",")) {
+                for (String part : rulesText.split(",")) {
                     String trimmed = part.trim();
                     if (!trimmed.isEmpty()) rulesList.add(trimmed);
                 }
             } else {
-                rulesList.add(rules);
+                rulesList.add(rulesText);
             }
-            room.put("rules", rulesList);
-        } else {
-            room.put("rules", new ArrayList<>());
+            room.setRules(rulesList);
         }
 
-        db.collection("rooms").document(currentRoomId)
-                .set(room)
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "Room created, starting uploads...");
-                    startUploadingMedia();
-                })
-                .addOnFailureListener(e -> {
+        // Owner info
+        room.setPostedBy(currentUserId);
+
+        // Media flags
+        room.setHasVideo(selectedVideoUri != null);
+        room.setHasContract(selectedContractUri != null);
+
+        // Status
+        room.setAvailable(true);
+        room.setStatus("active");
+
+        Log.d(TAG, "Sending room creation request");
+
+        // Create the room via API - Now using Room object
+        Call<Room> call = apiInterface.createRoom(room);
+        call.enqueue(new Callback<Room>() {
+            @Override
+            public void onResponse(Call<Room> call, Response<Room> response) {
+                Log.d(TAG, "Response code: " + response.code());
+
+                if (response.isSuccessful() && response.body() != null) {
+                    Room createdRoom = response.body();
+                    createdRoomId = createdRoom.getId();
+                    Log.d(TAG, "✅ Room created with ID: " + createdRoomId);
+
+                    // Send notification to users
+                    sendNotificationForNewRoom(createdRoom);
+
+                    // Now upload media
+                    uploadMedia(createdRoomId);
+                } else {
                     showLoading(false);
-                    showError("Failed to create room: " + e.getMessage());
-                });
+                    String errorMsg = "Failed to create room";
+                    try {
+                        if (response.errorBody() != null) {
+                            errorMsg = response.errorBody().string();
+                            Log.e(TAG, "Error body: " + errorMsg);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error body", e);
+                    }
+                    showError(errorMsg);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Room> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error", t);
+                showError("Network error: " + t.getMessage());
+            }
+        });
     }
 
-    private void startUploadingMedia() {
+    private void uploadMedia(long roomId) {
         int totalUploads = selectedImageUris.size() +
                 (selectedVideoUri != null ? 1 : 0) +
                 (selectedContractUri != null ? 1 : 0);
+
+        Log.d(TAG, "Starting media uploads. Total: " + totalUploads);
 
         if (totalUploads == 0) {
             finishPosting();
@@ -692,99 +792,162 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         }
 
         AtomicInteger completedUploads = new AtomicInteger(0);
+        AtomicInteger failedUploads = new AtomicInteger(0);
+
+        Runnable checkCompletion = () -> {
+            int completed = completedUploads.incrementAndGet();
+            Log.d(TAG, "Upload progress: " + completed + "/" + totalUploads);
+            if (completed == totalUploads) {
+                runOnUiThread(() -> {
+                    if (failedUploads.get() > 0) {
+                        showLoading(false);
+                        showError("Some files failed to upload. Room created but media upload incomplete.");
+                    } else {
+                        finishPosting();
+                    }
+                });
+            }
+        };
 
         // Upload images
         for (int i = 0; i < selectedImageUris.size(); i++) {
             final int index = i;
             Uri imageUri = selectedImageUris.get(i);
-            StorageReference imageRef = storage.getReference()
-                    .child("rooms/" + currentRoomId + "/images/image_" + System.currentTimeMillis() + "_" + index + ".jpg");
 
-            imageRef.putFile(imageUri)
-                    .addOnSuccessListener(taskSnapshot -> {
-                        imageRef.getDownloadUrl().addOnSuccessListener(uri -> {
-                            db.collection("rooms").document(currentRoomId)
-                                    .update("images", com.google.firebase.firestore.FieldValue.arrayUnion(uri.toString()))
-                                    .addOnSuccessListener(aVoid -> {
-                                        int completed = completedUploads.incrementAndGet();
-                                        if (completed == totalUploads) {
-                                            finishPosting();
-                                        }
-                                    });
-                        });
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Image upload failed: " + e.getMessage());
-                        int completed = completedUploads.incrementAndGet();
-                        if (completed == totalUploads) finishPosting();
-                    });
+            try {
+                InputStream inputStream = getContentResolver().openInputStream(imageUri);
+                byte[] imageBytes = getBytes(inputStream);
+
+                RequestBody requestFile = RequestBody.create(MediaType.parse("image/jpeg"), imageBytes);
+                MultipartBody.Part body = MultipartBody.Part.createFormData("images", "image_" + System.currentTimeMillis() + "_" + index + ".jpg", requestFile);
+
+                Call<ApiResponse<List<String>>> call = apiInterface.uploadRoomImages(roomId, body);
+                call.enqueue(new Callback<ApiResponse<List<String>>>() {
+                    @Override
+                    public void onResponse(Call<ApiResponse<List<String>>> call, Response<ApiResponse<List<String>>> response) {
+                        if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                            Log.d(TAG, "✅ Image " + index + " uploaded successfully");
+                        } else {
+                            Log.e(TAG, "❌ Failed to upload image " + index);
+                            failedUploads.incrementAndGet();
+                        }
+                        checkCompletion.run();
+                    }
+
+                    @Override
+                    public void onFailure(Call<ApiResponse<List<String>>> call, Throwable t) {
+                        Log.e(TAG, "❌ Image upload failed: " + t.getMessage());
+                        failedUploads.incrementAndGet();
+                        checkCompletion.run();
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error preparing image: " + e.getMessage());
+                failedUploads.incrementAndGet();
+                checkCompletion.run();
+            }
         }
 
         // Upload video
         if (selectedVideoUri != null) {
-            StorageReference videoRef = storage.getReference()
-                    .child("rooms/" + currentRoomId + "/video/video_" + System.currentTimeMillis() + ".mp4");
+            try {
+                long videoSize = getFileSize(selectedVideoUri);
+                if (videoSize > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+                    Log.e(TAG, "Video too large: " + (videoSize / (1024 * 1024)) + "MB");
+                    failedUploads.incrementAndGet();
+                    checkCompletion.run();
+                } else {
+                    InputStream inputStream = getContentResolver().openInputStream(selectedVideoUri);
+                    byte[] videoBytes = getBytes(inputStream);
 
-            videoRef.putFile(selectedVideoUri)
-                    .addOnSuccessListener(taskSnapshot -> {
-                        videoRef.getDownloadUrl().addOnSuccessListener(uri -> {
-                            Map<String, Object> updates = new HashMap<>();
-                            updates.put("videoUrl", uri.toString());
-                            updates.put("hasVideo", true);
+                    Log.d(TAG, "Video size: " + (videoBytes.length / (1024 * 1024)) + "MB");
 
-                            db.collection("rooms").document(currentRoomId)
-                                    .update(updates)
-                                    .addOnSuccessListener(aVoid -> {
-                                        Log.d(TAG, "✓ Video uploaded: " + uri.toString());
-                                        int completed = completedUploads.incrementAndGet();
-                                        if (completed == totalUploads) finishPosting();
-                                    });
-                        });
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Video upload failed: " + e.getMessage());
-                        int completed = completedUploads.incrementAndGet();
-                        if (completed == totalUploads) finishPosting();
+                    RequestBody requestFile = RequestBody.create(MediaType.parse("video/mp4"), videoBytes);
+                    MultipartBody.Part body = MultipartBody.Part.createFormData("video", videoFileName, requestFile);
+
+                    Call<ApiResponse<String>> call = apiInterface.uploadRoomVideo(roomId, body);
+                    call.enqueue(new Callback<ApiResponse<String>>() {
+                        @Override
+                        public void onResponse(Call<ApiResponse<String>> call, Response<ApiResponse<String>> response) {
+                            if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                                Log.d(TAG, "✅ Video uploaded successfully");
+                            } else {
+                                Log.e(TAG, "❌ Failed to upload video. Code: " + response.code());
+                                if (response.code() == 413) {
+                                    Log.e(TAG, "Video too large for server");
+                                    runOnUiThread(() -> showError("Video too large. Please select a smaller video (under 10MB)"));
+                                }
+                                failedUploads.incrementAndGet();
+                            }
+                            checkCompletion.run();
+                        }
+
+                        @Override
+                        public void onFailure(Call<ApiResponse<String>> call, Throwable t) {
+                            Log.e(TAG, "❌ Video upload failed: " + t.getMessage());
+                            failedUploads.incrementAndGet();
+                            checkCompletion.run();
+                        }
                     });
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error preparing video: " + e.getMessage());
+                failedUploads.incrementAndGet();
+                checkCompletion.run();
+            }
         }
 
         // Upload contract
         if (selectedContractUri != null) {
-            StorageReference contractRef = storage.getReference()
-                    .child("rooms/" + currentRoomId + "/contracts/contract_" + System.currentTimeMillis() + ".pdf");
+            try {
+                InputStream inputStream = getContentResolver().openInputStream(selectedContractUri);
+                byte[] contractBytes = getBytes(inputStream);
 
-            contractRef.putFile(selectedContractUri)
-                    .addOnSuccessListener(taskSnapshot -> {
-                        contractRef.getDownloadUrl().addOnSuccessListener(uri -> {
-                            Map<String, Object> updates = new HashMap<>();
-                            updates.put("contractUrl", uri.toString());
-                            updates.put("hasContract", true);
+                Log.d(TAG, "Contract size: " + (contractBytes.length / 1024) + "KB");
 
-                            db.collection("rooms").document(currentRoomId)
-                                    .update(updates)
-                                    .addOnSuccessListener(aVoid -> {
-                                        Log.d(TAG, "✓ Contract uploaded: " + uri.toString());
-                                        int completed = completedUploads.incrementAndGet();
-                                        if (completed == totalUploads) finishPosting();
-                                    });
-                        });
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Contract upload failed: " + e.getMessage());
-                        int completed = completedUploads.incrementAndGet();
-                        if (completed == totalUploads) finishPosting();
-                    });
+                RequestBody requestFile = RequestBody.create(MediaType.parse("application/pdf"), contractBytes);
+                MultipartBody.Part body = MultipartBody.Part.createFormData("contract", contractFileName, requestFile);
+
+                Call<ApiResponse<String>> call = apiInterface.uploadRoomContract(roomId, body);
+                call.enqueue(new Callback<ApiResponse<String>>() {
+                    @Override
+                    public void onResponse(Call<ApiResponse<String>> call, Response<ApiResponse<String>> response) {
+                        if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                            Log.d(TAG, "✅ Contract uploaded successfully");
+                        } else {
+                            Log.e(TAG, "❌ Failed to upload contract");
+                            failedUploads.incrementAndGet();
+                        }
+                        checkCompletion.run();
+                    }
+
+                    @Override
+                    public void onFailure(Call<ApiResponse<String>> call, Throwable t) {
+                        Log.e(TAG, "❌ Contract upload failed: " + t.getMessage());
+                        failedUploads.incrementAndGet();
+                        checkCompletion.run();
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error preparing contract: " + e.getMessage());
+                failedUploads.incrementAndGet();
+                checkCompletion.run();
+            }
         }
     }
 
-    private void finishPosting() {
-        runOnUiThread(() -> {
-            sendNewRoomNotification();
-            showSuccess();
-        });
+    private byte[] getBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        int bufferSize = 4096;
+        byte[] buffer = new byte[bufferSize];
+        int len;
+        while ((len = inputStream.read(buffer)) != -1) {
+            byteBuffer.write(buffer, 0, len);
+        }
+        return byteBuffer.toByteArray();
     }
 
-    private void showSuccess() {
+    private void finishPosting() {
         runOnUiThread(() -> {
             showLoading(false);
             new MaterialAlertDialogBuilder(this)
@@ -793,44 +956,13 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                     .setPositiveButton("OK", (dialog, which) -> {
                         Intent intent = new Intent();
                         intent.putExtra("room_posted", true);
-                        intent.putExtra("room_id", currentRoomId);
+                        intent.putExtra("room_id", createdRoomId);
                         setResult(RESULT_OK, intent);
                         finish();
                     })
                     .setCancelable(false)
                     .show();
         });
-    }
-
-    private void sendNewRoomNotification() {
-        new Thread(() -> {
-            try {
-                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-                org.json.JSONObject json = new org.json.JSONObject();
-                json.put("to", "/topics/rooms");
-
-                org.json.JSONObject notification = new org.json.JSONObject();
-                notification.put("title", "New Room Available 🏠");
-                notification.put("body", "Check out the latest room posted!");
-
-                json.put("notification", notification);
-
-                okhttp3.RequestBody body = okhttp3.RequestBody.create(
-                        json.toString(),
-                        okhttp3.MediaType.parse("application/json")
-                );
-
-                okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url("https://fcm.googleapis.com/fcm/send")
-                        .post(body)
-                        .addHeader("Authorization", "key=YOUR_SERVER_KEY")
-                        .build();
-
-                client.newCall(request).execute();
-            } catch (Exception e) {
-                Log.e("FCM", "Error sending notification: " + e.getMessage());
-            }
-        }).start();
     }
 
     private void showLoading(boolean show) {
@@ -880,17 +1012,13 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     protected void onPause() {
         super.onPause();
         if (googleMap != null) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
-                return;
+            try {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    googleMap.setMyLocationEnabled(false);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error in onPause: " + e.getMessage());
             }
-            googleMap.setMyLocationEnabled(false);
         }
     }
 }

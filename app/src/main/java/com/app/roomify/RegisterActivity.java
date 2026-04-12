@@ -11,32 +11,36 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.app.roomify.models.AuthResponse;
+import com.app.roomify.models.RegisterRequest;  // CORRECT import
+import com.app.roomify.models.User;
+import com.app.roomify.network.APIClient;
+import com.app.roomify.network.APIInterface;
+import com.app.roomify.network.TokenManager;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.textfield.TextInputEditText;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.auth.UserProfileChangeRequest;
-import com.google.firebase.firestore.FirebaseFirestore;
 
-import java.util.HashMap;
-import java.util.Map;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class RegisterActivity extends AppCompatActivity {
 
-    private TextView tvLogin;
+    private static final String TAG = "RegisterActivity";
 
+    private TextView tvLogin;
     private TextInputEditText etName, etEmail, etPassword, etConfirmPassword, etBusinessName, etPhone;
     private MaterialButton btnRegister;
-
     private MaterialCardView ownerFieldsCard;
-
     private Chip chipTenant, chipOwner;
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore db;
 
-    private String selectedRole = "tenant"; // Default role
+    // MySQL Backend components
+    private APIInterface apiInterface;
+    private TokenManager tokenManager;
+
+    private String selectedRole = "tenant";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,9 +54,10 @@ public class RegisterActivity extends AppCompatActivity {
     }
 
     private void setupInitialization() {
-        // Initialize Firebase
-        mAuth = FirebaseAuth.getInstance();
-        db = FirebaseFirestore.getInstance();
+        // Initialize MySQL backend
+        tokenManager = new TokenManager(this);
+        APIClient.init(tokenManager);
+        apiInterface = APIClient.getClient().create(APIInterface.class);
 
         // Initialize Views
         etName = findViewById(R.id.etName);
@@ -69,10 +74,7 @@ public class RegisterActivity extends AppCompatActivity {
     }
 
     private void setupListener() {
-        // Register button
         btnRegister.setOnClickListener(v -> registerUser());
-
-        // Go to login
         tvLogin.setOnClickListener(v -> {
             startActivity(new Intent(this, LoginActivity.class));
             finish();
@@ -80,10 +82,8 @@ public class RegisterActivity extends AppCompatActivity {
     }
 
     private void setupRoleSelection() {
-        // Set tenant as default checked
         chipTenant.setChecked(true);
 
-        // Tenant selected
         chipTenant.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 selectedRole = "tenant";
@@ -92,7 +92,6 @@ public class RegisterActivity extends AppCompatActivity {
             }
         });
 
-        // Owner selected
         chipOwner.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 selectedRole = "owner";
@@ -136,7 +135,6 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
-        // Validate owner-specific fields
         if (selectedRole.equals("owner")) {
             if (TextUtils.isEmpty(phone)) {
                 etPhone.setError("Phone number is required for owners");
@@ -148,120 +146,98 @@ public class RegisterActivity extends AppCompatActivity {
         btnRegister.setEnabled(false);
         btnRegister.setText("Creating Account...");
 
-        // Create user
-        mAuth.createUserWithEmailAndPassword(email, password)
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        FirebaseUser user = mAuth.getCurrentUser();
-
-                        if (user != null) {
-                            Log.d("Register", "User created successfully: " + user.getUid());
-
-                            // Update display name
-                            UserProfileChangeRequest profileUpdates = new UserProfileChangeRequest.Builder()
-                                    .setDisplayName(name)
-                                    .build();
-
-                            user.updateProfile(profileUpdates)
-                                    .addOnCompleteListener(profileTask -> {
-                                        if (profileTask.isSuccessful()) {
-                                            Log.d("Register", "User profile updated");
-                                        }
-                                    });
-
-                            // Send email verification - DON'T sign out yet
-                            user.sendEmailVerification()
-                                    .addOnCompleteListener(verifyTask -> {
-                                        if (verifyTask.isSuccessful()) {
-                                            Log.d("Register", "Verification email sent successfully to: " + email);
-
-                                            // Save user data to Firestore
-                                            saveUserToFirestore(user.getUid(), name, email, selectedRole, businessName, phone);
-                                        } else {
-                                            // Failed to send verification email
-                                            Log.e("Register", "Failed to send verification email", verifyTask.getException());
-                                            btnRegister.setEnabled(true);
-                                            btnRegister.setText("Register");
-                                            Toast.makeText(RegisterActivity.this,
-                                                    "Failed to send verification email: " + verifyTask.getException().getMessage(),
-                                                    Toast.LENGTH_LONG).show();
-
-                                            // Delete the created user since verification failed
-                                            user.delete().addOnCompleteListener(deleteTask -> {
-                                                if (deleteTask.isSuccessful()) {
-                                                    Log.d("Register", "User deleted due to verification failure");
-                                                }
-                                            });
-                                        }
-                                    });
-                        }
-                    } else {
-                        btnRegister.setEnabled(true);
-                        btnRegister.setText("Register");
-                        Log.e("Register", "Registration failed", task.getException());
-                        Toast.makeText(RegisterActivity.this,
-                                "Error: " + task.getException().getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
+        // Register with MySQL backend
+        registerWithMySQL(name, email, password, selectedRole, businessName, phone);
     }
 
-    private void saveUserToFirestore(String userId, String name, String email, String role,
-                                     String businessName, String phone) {
-        // Create user data map
-        Map<String, Object> userData = new HashMap<>();
-        userData.put("userId", userId);
-        userData.put("name", name);
-        userData.put("email", email);
-        userData.put("role", role);
-        userData.put("createdAt", System.currentTimeMillis());
-        userData.put("emailVerified", false);
+    private void registerWithMySQL(String name, String email, String password,
+                                   String role, String businessName, String phone) {
 
-        // Add role-specific fields
-        if (role.equals("owner")) {
-            userData.put("businessName", businessName != null ? businessName : "");
-            userData.put("phone", phone != null ? phone : "");
-        } else {
-            userData.put("phone", phone != null ? phone : "");
-        }
+        // Create RegisterRequest object using setters (safer approach)
+        RegisterRequest request = new RegisterRequest();
+        request.setName(name);
+        request.setEmail(email);
+        request.setPassword(password);
+        request.setRole(role);
+        request.setBusinessName(businessName);
+        request.setPhone(phone);
 
-        // Save to Firestore
-        db.collection("users")
-                .document(userId)
-                .set(userData)
-                .addOnSuccessListener(aVoid -> {
-                    Log.d("Register", "User data saved to Firestore");
+        Call<AuthResponse> call = apiInterface.register(request);
 
-                    // Show success message
-                    Toast.makeText(RegisterActivity.this,
-                            "Registration successful! Please check your email to verify your account.\n\nIf you don't see the email, check your spam folder.",
-                            Toast.LENGTH_LONG).show();
+        call.enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                btnRegister.setEnabled(true);
+                btnRegister.setText("Register");
 
-                    // DON'T sign out yet - let the user see the message
-                    // Navigate to Login after a delay
-                    new android.os.Handler().postDelayed(() -> {
-                        // Sign out only before navigating
-                        mAuth.signOut();
+                if (response.isSuccessful() && response.body() != null) {
+                    AuthResponse authResponse = response.body();
 
-                        Intent intent = new Intent(RegisterActivity.this, LoginActivity.class);
-                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                        startActivity(intent);
-                        finish();
-                    }, 3000); // 3 seconds delay
-                })
-                .addOnFailureListener(e -> {
-                    btnRegister.setEnabled(true);
-                    btnRegister.setText("Register");
-                    Log.e("Register", "Failed to save to Firestore", e);
-                    Toast.makeText(RegisterActivity.this,
-                            "Failed to save user data: " + e.getMessage(),
-                            Toast.LENGTH_LONG).show();
+                    if (authResponse.isSuccess()) {
+                        User user = authResponse.getUser();
 
-                    // If Firestore save fails, delete the Firebase Auth user
-                    FirebaseUser user = mAuth.getCurrentUser();
-                    if (user != null) {
-                        user.delete();
+                        if (user != null) {
+                            // Save token and user data
+                            if (authResponse.getToken() != null) {
+                                tokenManager.saveToken(authResponse.getToken());
+                            }
+                            tokenManager.saveUser(user);
+
+                            Log.d(TAG, "Registration successful for user: " + user.getEmail());
+
+                            Toast.makeText(RegisterActivity.this,
+                                    "Registration successful! Please login to continue.",
+                                    Toast.LENGTH_LONG).show();
+
+                            // Navigate to login after delay
+                            new android.os.Handler().postDelayed(() -> {
+                                Intent intent = new Intent(RegisterActivity.this, LoginActivity.class);
+                                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                startActivity(intent);
+                                finish();
+                            }, 2000);
+                        } else {
+                            Toast.makeText(RegisterActivity.this,
+                                    "Registration failed: User data is null",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        String message = authResponse.getMessage();
+                        if (message == null) message = "Registration failed";
+                        Toast.makeText(RegisterActivity.this, message, Toast.LENGTH_LONG).show();
+
+                        // Handle specific error cases
+                        if (message.toLowerCase().contains("email")) {
+                            etEmail.setError(message);
+                        } else if (message.toLowerCase().contains("password")) {
+                            etPassword.setError(message);
+                        }
                     }
-                });
+                } else {
+                    // Handle error response
+                    String errorMsg = "Registration failed";
+                    if (response.code() == 409) {
+                        errorMsg = "Email already exists";
+                    } else if (response.code() == 400) {
+                        errorMsg = "Invalid input data";
+                    } else if (response.code() == 500) {
+                        errorMsg = "Server error. Please try again later";
+                    }
+                    Toast.makeText(RegisterActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Registration error - Code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                btnRegister.setEnabled(true);
+                btnRegister.setText("Register");
+
+                Log.e(TAG, "Network error during registration", t);
+                Toast.makeText(RegisterActivity.this,
+                        "Network error: " + t.getMessage(),
+                        Toast.LENGTH_LONG).show();
+            }
+        });
     }
 }

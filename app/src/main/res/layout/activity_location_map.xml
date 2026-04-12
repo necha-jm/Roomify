@@ -92,7 +92,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="44dp"
                 android:layout_marginEnd="8dp"
-                android:text="Search"
+                android:text="@string/search"
                 android:textAllCaps="false"
                 android:fontFamily="sans-serif-medium"
                 android:textSize="14sp"
@@ -178,7 +178,7 @@
                             android:layout_weight="1"
                             android:fontFamily="sans-serif-medium"
                             android:letterSpacing="-0.02"
-                            android:text="Make Decision"
+                            android:text="@string/make_decision"
                             android:textColor="@android:color/black"
                             android:textSize="28sp"
                             android:textStyle="bold" />
@@ -391,7 +391,7 @@
                             android:id="@+id/chip_english"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="English"
+                            android:text="@string/english"
                             android:layout_marginEnd="12dp"
                             app:chipBackgroundColor="@color/chip_background"
                             app:checkedIcon="@drawable/ic_room_available"
@@ -448,7 +448,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Home"
+                android:text="@string/home"
                 android:textSize="12sp"
                 android:textColor="@color/black"
                 android:layout_marginTop="4dp" />
@@ -475,7 +475,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Menu"
+                android:text="@string/menu"
                 android:textSize="12sp"
                 android:textColor="@color/black"
                 android:layout_marginTop="4dp" />
@@ -502,7 +502,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Profile"
+                android:text="@string/profile"
                 android:textSize="12sp"
                 android:textColor="@color/black"
                 android:layout_marginTop="4dp" />

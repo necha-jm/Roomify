@@ -5,13 +5,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHolder> {
 
@@ -39,7 +41,6 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         BookingRequest request = requests.get(position);
 
-        // Safety check for null request
         if (request == null) {
             return;
         }
@@ -49,17 +50,65 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
         holder.tvUserName.setText("From: " + getSafeString(request.getUserName(), "Unknown User"));
         holder.tvUserPhone.setText("Phone: " + getSafeString(request.getUserPhone(), "Not provided"));
 
-        String status = getSafeString(request.getStatus(), "pending");
+        String status = getSafeString(request.getStatus(), "PENDING");
         holder.tvStatus.setText("Status: " + status);
 
-        String bookingDate = getSafeString(request.getBookingDate(), "Date not available");
-        holder.tvDate.setText(bookingDate);
+        // Set status color
+        setStatusColor(holder.tvStatus, status);
+
+        // Format and set date
+        String formattedDate = formatDate(request);
+        holder.tvDate.setText(formattedDate);
+
+        // Set price if available
+        if (holder.tvPrice != null) {
+            holder.tvPrice.setText(request.getFormattedPrice());
+        }
 
         // Configure buttons based on status
         configureButtons(holder, request, status);
     }
 
+    private void setStatusColor(TextView tvStatus, String status) {
+        int color;
+        switch (status.toUpperCase()) {
+            case "PENDING":
+                color = android.graphics.Color.parseColor("#FFA500"); // Orange
+                break;
+            case "ACCEPTED":
+                color = android.graphics.Color.parseColor("#4CAF50"); // Green
+                break;
+            case "REJECTED":
+                color = android.graphics.Color.parseColor("#F44336"); // Red
+                break;
+            case "CANCELLED":
+                color = android.graphics.Color.parseColor("#9E9E9E"); // Gray
+                break;
+            default:
+                color = android.graphics.Color.parseColor("#9E9E9E");
+                break;
+        }
+        tvStatus.setTextColor(color);
+    }
 
+    private String formatDate(BookingRequest request) {
+        if (request.getBookingDate() != null && !request.getBookingDate().isEmpty()) {
+            return request.getBookingDate();
+        }
+
+        // Try to use createdAt timestamp
+        if (request.getCreatedAt() > 0) {
+            SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy", Locale.getDefault());
+            return sdf.format(new Date(request.getCreatedAt()));
+        }
+
+        // Try start date if available
+        if (request.getStartDate() != null && !request.getStartDate().isEmpty()) {
+            return "From: " + request.getStartDate();
+        }
+
+        return "Date not available";
+    }
 
     private void configureButtons(ViewHolder holder, BookingRequest request, String status) {
         // Reset all buttons visibility first
@@ -74,8 +123,8 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
         holder.btnCancel.setOnClickListener(null);
         holder.btnDelete.setOnClickListener(null);
 
-        switch (status.toLowerCase()) {
-            case "pending":
+        switch (status.toUpperCase()) {
+            case "PENDING":
                 // Pending requests: Show Accept/Reject buttons
                 holder.btnAccept.setVisibility(View.VISIBLE);
                 holder.btnReject.setVisibility(View.VISIBLE);
@@ -93,26 +142,18 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
                 });
                 break;
 
-            case "approved":
-                // Approved requests: Show Cancel/Delete buttons
+            case "ACCEPTED":
+                // Accepted requests: Show Cancel button
                 holder.btnCancel.setVisibility(View.VISIBLE);
-                holder.btnDelete.setVisibility(View.VISIBLE);
-
                 holder.btnCancel.setOnClickListener(v -> {
                     if (listener != null) {
                         listener.onAction(request, "cancel");
                     }
                 });
-
-                holder.btnDelete.setOnClickListener(v -> {
-                    if (listener != null) {
-                        listener.onAction(request, "delete");
-                    }
-                });
                 break;
 
-            case "rejected":
-            case "cancelled":
+            case "REJECTED":
+            case "CANCELLED":
                 // Rejected or cancelled: Show only Delete button
                 holder.btnDelete.setVisibility(View.VISIBLE);
                 holder.btnDelete.setOnClickListener(v -> {
@@ -151,7 +192,7 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
 
     public void removeRequest(BookingRequest request) {
         if (request != null) {
-            int index = requests.indexOf(request);
+            int index = findRequestIndex(request.getId());
             if (index != -1) {
                 requests.remove(index);
                 notifyItemRemoved(index);
@@ -177,13 +218,14 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
         }
     }
 
-    private int findRequestIndex(String requestId) {
+    // FIXED: Changed parameter from String to Long
+    private int findRequestIndex(Long requestId) {
         if (requestId == null || requests == null) {
             return -1;
         }
         for (int i = 0; i < requests.size(); i++) {
             BookingRequest request = requests.get(i);
-            if (request != null && requestId.equals(request.getId())) {
+            if (request != null && request.getId() != null && requestId.equals(request.getId())) {
                 return i;
             }
         }
@@ -195,7 +237,7 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView tvRoomTitle, tvUserName, tvUserPhone, tvStatus, tvDate;
+        TextView tvRoomTitle, tvUserName, tvUserPhone, tvStatus, tvDate, tvPrice;
         Button btnAccept, btnReject, btnCancel, btnDelete;
 
         ViewHolder(@NonNull View itemView) {
@@ -205,6 +247,7 @@ public class BookingAdapter extends RecyclerView.Adapter<BookingAdapter.ViewHold
             tvUserPhone = itemView.findViewById(R.id.tvUserPhone);
             tvStatus = itemView.findViewById(R.id.tvStatus);
             tvDate = itemView.findViewById(R.id.tvDate);
+            tvPrice = itemView.findViewById(R.id.tvPrice);
             btnAccept = itemView.findViewById(R.id.btnAccept);
             btnReject = itemView.findViewById(R.id.btnReject);
             btnCancel = itemView.findViewById(R.id.btnCancel);

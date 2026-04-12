@@ -10,6 +10,8 @@ import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
+
 import java.util.List;
 
 public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapter.PropertyViewHolder> {
@@ -29,7 +31,7 @@ public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapte
     public MyPropertiesAdapter(List<Room> properties,
                                OnPropertyClickListener clickListener,
                                OnPropertyDeleteListener deleteListener) {
-        this.properties = properties;
+        this.properties = properties != null ? properties : List.of();
         this.clickListener = clickListener;
         this.deleteListener = deleteListener;
     }
@@ -46,54 +48,78 @@ public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapte
     public void onBindViewHolder(@NonNull PropertyViewHolder holder, int position) {
         Room room = properties.get(position);
 
-        if (room != null) {
-            // Set basic info
-            holder.tvTitle.setText(room.getTitle());
-            holder.tvPrice.setText(room.getFormattedPrice());
-            holder.tvLocation.setText(room.getLocationSummary());
+        if (room == null) return;
 
+        // Set basic info with null safety
+        String title = room.getTitle();
+        holder.tvTitle.setText(title != null ? title : "Untitled Property");
 
-            // Set availability badge
-            if (room.isAvailable()) {
-                holder.tvAvailability.setText("Available");
-                holder.tvAvailability.setTextColor(holder.itemView.getContext().getColor(R.color.green_success));
-                holder.ivAvailability.setImageResource(R.drawable.ic_check_circle);
-                holder.ivAvailability.setColorFilter(holder.itemView.getContext().getColor(R.color.green_success));
-            } else {
-                holder.tvAvailability.setText("Not Available");
-                holder.tvAvailability.setTextColor(holder.itemView.getContext().getColor(R.color.red_error));
-                holder.ivAvailability.setImageResource(R.drawable.ic_close);
-                holder.ivAvailability.setColorFilter(holder.itemView.getContext().getColor(R.color.red_error));
-            }
+        // Safe price formatting
+        String price = room.getFormattedPrice();
+        holder.tvPrice.setText(price != null ? price : "$0");
 
-            // Set placeholder image if no image
-            if (room.hasImages()) {
-                // Use Glide or Picasso to load image
-                // Glide.with(holder.itemView.getContext()).load(room.getFirstImageUrl()).into(holder.ivPropertyImage);
+        // Safe location - THIS FIXES YOUR ERROR
+        String location = room.getLocationSummary();
+        holder.tvLocation.setText(location != null ? location : "Location not specified");
+
+        // Set availability badge
+        if (room.isAvailable()) {
+            holder.tvAvailability.setText("Available");
+            holder.tvAvailability.setTextColor(holder.itemView.getContext().getColor(R.color.green_success));
+            holder.ivAvailability.setImageResource(R.drawable.ic_check_circle);
+            holder.ivAvailability.setColorFilter(holder.itemView.getContext().getColor(R.color.green_success));
+        } else {
+            holder.tvAvailability.setText("Not Available");
+            holder.tvAvailability.setTextColor(holder.itemView.getContext().getColor(R.color.red_error));
+            holder.ivAvailability.setImageResource(R.drawable.ic_close);
+            holder.ivAvailability.setColorFilter(holder.itemView.getContext().getColor(R.color.red_error));
+        }
+
+        // Set bookings count (if available)
+        if (holder.tvBookingsCount != null) {
+            int bookingsCount = room.getBookingsCount();
+            holder.tvBookingsCount.setText(bookingsCount + " booking" + (bookingsCount != 1 ? "s" : ""));
+        }
+
+        // Load image safely
+        if (room.hasImages()) {
+            String imageUrl = room.getFirstImageUrl();
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                try {
+                    Glide.with(holder.itemView.getContext())
+                            .load(imageUrl)
+                            .placeholder(R.drawable.ic_room_placeholder)
+                            .error(R.drawable.ic_room_placeholder)
+                            .into(holder.ivPropertyImage);
+                } catch (Exception e) {
+                    holder.ivPropertyImage.setImageResource(R.drawable.ic_room_placeholder);
+                }
             } else {
                 holder.ivPropertyImage.setImageResource(R.drawable.ic_room_placeholder);
             }
-
-            // Set click listeners
-            holder.cardView.setOnClickListener(v -> {
-                if (clickListener != null) {
-                    clickListener.onPropertyClick(room);
-                }
-            });
-
-            holder.btnDelete.setOnClickListener(v -> {
-                if (deleteListener != null) {
-                    deleteListener.onPropertyDelete(room);
-                }
-            });
-
-            holder.btnEdit.setOnClickListener(v -> {
-                // Navigate to edit activity
-                // Intent intent = new Intent(holder.itemView.getContext(), EditRoomActivity.class);
-                // intent.putExtra("room_id", room.getId());
-                // holder.itemView.getContext().startActivity(intent);
-            });
+        } else {
+            holder.ivPropertyImage.setImageResource(R.drawable.ic_room_placeholder);
         }
+
+        // Set click listeners
+        holder.cardView.setOnClickListener(v -> {
+            if (clickListener != null) {
+                clickListener.onPropertyClick(room);
+            }
+        });
+
+        holder.btnDelete.setOnClickListener(v -> {
+            if (deleteListener != null) {
+                deleteListener.onPropertyDelete(room);
+            }
+        });
+
+        holder.btnEdit.setOnClickListener(v -> {
+            // Navigate to edit activity
+            // Intent intent = new Intent(holder.itemView.getContext(), EditRoomActivity.class);
+            // intent.putExtra("room_id", room.getId());
+            // holder.itemView.getContext().startActivity(intent);
+        });
     }
 
     @Override
@@ -102,7 +128,7 @@ public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapte
     }
 
     public void updateList(List<Room> newList) {
-        this.properties = newList;
+        this.properties = newList != null ? newList : List.of();
         notifyDataSetChanged();
     }
 
