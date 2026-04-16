@@ -9,8 +9,10 @@ import java.util.List;
 @TypeConverters(Converters.class)
 public class RoomEntity {
 
-    @PrimaryKey
+    @PrimaryKey(autoGenerate = true)  // IMPORTANT: Auto-generate local ID
     private long id;
+
+    private long serverId;  // Store server-generated ID separately
     private String title;
     private String description;
     private String propertyType;
@@ -49,6 +51,9 @@ public class RoomEntity {
     // Getters and Setters
     public long getId() { return id; }
     public void setId(long id) { this.id = id; }
+
+    public long getServerId() { return serverId; }
+    public void setServerId(long serverId) { this.serverId = serverId; }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }

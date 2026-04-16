@@ -328,9 +328,26 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 hasVideo = videoUrl != null && !videoUrl.isEmpty();
                 hasContract = contractUrl != null && !contractUrl.isEmpty();
 
-                // Extract images
+                // FIX: Extract images and convert to full URLs
+                imageUrls = new ArrayList<>();
                 if (currentRoom.getImages() != null && !currentRoom.getImages().isEmpty()) {
-                    imageUrls = currentRoom.getImages();
+                    List<String> rawImages = currentRoom.getImages();
+                    String baseUrl = "https://roomify-backend-2.onrender.com";
+
+                    for (String imgPath : rawImages) {
+                        if (imgPath != null && !imgPath.isEmpty()) {
+                            String fullUrl;
+                            if (imgPath.startsWith("http")) {
+                                fullUrl = imgPath;
+                            } else if (imgPath.startsWith("/")) {
+                                fullUrl = baseUrl + imgPath;
+                            } else {
+                                fullUrl = baseUrl + "/" + imgPath;
+                            }
+                            imageUrls.add(fullUrl);
+                            Log.d(TAG, "Image URL: " + fullUrl);
+                        }
+                    }
                     setupImagePager();
                 }
 
@@ -445,7 +462,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
         viewPagerImages.setVisibility(View.VISIBLE);
 
-        ImagePagerAdapter adapter = new ImagePagerAdapter(imageUrls);
+        // Pass TokenManager to adapter
+        ImagePagerAdapter adapter = new ImagePagerAdapter(imageUrls, tokenManager);
         viewPagerImages.setAdapter(adapter);
         viewPagerImages.setOffscreenPageLimit(1);
 
@@ -456,6 +474,15 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
     }
 
+    private String getFullImageUrl(String imagePath) {
+        if (imagePath == null || imagePath.isEmpty()) return null;
+        if (imagePath.startsWith("http")) return imagePath;
+        String baseUrl = "https://roomify-backend-2.onrender.com";
+        if (imagePath.startsWith("/")) {
+            return baseUrl + imagePath;
+        }
+        return baseUrl + "/" + imagePath;
+    }
     private void setupImageIndicator() {
         if (imageIndicator == null || imageUrls.isEmpty()) return;
 

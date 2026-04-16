@@ -1,6 +1,5 @@
 package com.app.roomify;
 
-
 import android.content.Context;
 import android.util.Log;
 
@@ -64,7 +63,6 @@ public class DatabaseHelper {
         }
     }
 
-
     public void getUser(String userId, UserCallback callback) {
         try {
             long id = Long.parseLong(userId);
@@ -101,18 +99,68 @@ public class DatabaseHelper {
         void onComplete(boolean success, String message);
     }
 
+    // UPDATED: saveRoom now uses RoomCreateRequest
     public void saveRoom(Room room, VoidCallback callback) {
         if (room == null) {
             if (callback != null) callback.onComplete(false, "Room is null");
             return;
         }
 
-        Call<Room> call = apiInterface.createRoom(room);
+        // Create the request object with only necessary fields
+        RoomCreateRequest request = new RoomCreateRequest(room);
+
+        // Log the request for debugging
+        try {
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            String json = gson.toJson(request);
+            Log.d(TAG, "Saving room with JSON: " + json);
+        } catch (Exception e) {
+            Log.e(TAG, "Error logging JSON", e);
+        }
+
+        // Use the new request object
+        Call<Room> call = apiInterface.createRoom(request);
         call.enqueue(new Callback<Room>() {
             @Override
             public void onResponse(Call<Room> call, Response<Room> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     Room createdRoom = response.body();
+                    Log.d(TAG, "Room saved successfully with ID: " + createdRoom.getId());
+                    if (callback != null) callback.onComplete(true, "Room saved");
+                } else {
+                    String errorMsg = "Failed to save room";
+                    try {
+                        if (response.errorBody() != null) {
+                            errorMsg = response.errorBody().string();
+                            Log.e(TAG, "Error body: " + errorMsg);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error body", e);
+                    }
+                    if (callback != null) callback.onComplete(false, errorMsg);
+                }
+            }
+            @Override
+            public void onFailure(Call<Room> call, Throwable t) {
+                Log.e(TAG, "Network error saving room", t);
+                if (callback != null) callback.onComplete(false, t.getMessage());
+            }
+        });
+    }
+
+    // Keep the original method for backward compatibility (deprecated)
+    @Deprecated
+    public void saveRoomLegacy(Room room, VoidCallback callback) {
+        if (room == null) {
+            if (callback != null) callback.onComplete(false, "Room is null");
+            return;
+        }
+
+        Call<Room> call = apiInterface.createRoomLegacy(room); // You would need to add this to APIInterface
+        call.enqueue(new Callback<Room>() {
+            @Override
+            public void onResponse(Call<Room> call, Response<Room> response) {
+                if (response.isSuccessful() && response.body() != null) {
                     if (callback != null) callback.onComplete(true, "Room saved");
                 } else {
                     if (callback != null) callback.onComplete(false, "Failed to save room");

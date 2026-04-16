@@ -1,20 +1,19 @@
 package com.app.roomify;
 
 import android.Manifest;
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.location.Address;
 import android.location.Geocoder;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.webkit.MimeTypeMap;
 import android.widget.ArrayAdapter;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -54,6 +53,7 @@ import com.app.roomify.models.User;
 import com.app.roomify.network.APIClient;
 import com.app.roomify.network.APIInterface;
 import com.app.roomify.network.TokenManager;
+import com.google.gson.Gson;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -79,7 +79,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private static final int VIDEO_PICK_REQUEST_CODE = 300;
     private static final int CONTRACT_PICK_REQUEST_CODE = 400;
     private static final int MAX_IMAGES = 5;
-    private static final int MAX_VIDEO_SIZE_MB = 10; // 10MB max video size
+    private static final int MAX_VIDEO_SIZE_MB = 10;
 
     // Views
     private SupportMapFragment mapFragment;
@@ -142,8 +142,24 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             return;
         }
 
-        currentUserId = tokenManager.getUserId();
-        Log.d(TAG, "User authenticated with ID: " + currentUserId);
+        // Get current user ID
+        User currentUser = tokenManager.getUser();
+        if (currentUser != null) {
+            currentUserId = currentUser.getId();
+        } else {
+            currentUserId = tokenManager.getUserId();
+        }
+
+        Log.d(TAG, "Current User ID: " + currentUserId);
+
+        if (currentUserId == null || currentUserId == -1) {
+            Toast.makeText(this, "Authentication error. Please login again.", Toast.LENGTH_LONG).show();
+            Intent intent = new Intent(this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
 
         initializeViews();
         setupPropertyTypeSpinner();
@@ -272,38 +288,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 Log.e(TAG, "Error updating map location: " + e.getMessage());
             }
         }
-    }
-
-    private void sendNotificationForNewRoom(Room room) {
-        // Room object null check
-        if (room == null) {
-            Log.e(TAG, "Cannot send notification: Room is null");
-            return;
-        }
-
-        // For primitive long, check if ID is valid (not 0 or -1)
-        long roomId = room.getId();
-        if (roomId == 0 || roomId == -1) {
-            Log.e(TAG, "Cannot send notification: Invalid room ID: " + roomId);
-            return;
-        }
-
-        Call<ApiResponse<Void>> call = apiInterface.sendRoomNotification(roomId);
-        call.enqueue(new Callback<ApiResponse<Void>>() {
-            @Override
-            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    Log.d(TAG, "✅ Notification sent to interested users for room: " + roomId);
-                } else {
-                    Log.e(TAG, "Failed to send notification. Code: " + response.code());
-                }
-            }
-
-            @Override
-            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
-                Log.e(TAG, "Failed to send notifications: " + t.getMessage(), t);
-            }
-        });
     }
 
     private void getAddressFromLocation(LatLng latLng) {
@@ -461,10 +445,9 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         selectedVideoUri = data.getData();
                         if (selectedVideoUri != null) {
                             videoFileName = getFileName(selectedVideoUri);
-
                             long videoSize = getFileSize(selectedVideoUri);
                             if (videoSize > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
-                                Toast.makeText(this, "Video too large (" + (videoSize / (1024 * 1024)) + "MB). Please select a video under " + MAX_VIDEO_SIZE_MB + "MB", Toast.LENGTH_LONG).show();
+                                Toast.makeText(this, "Video too large. Please select a video under " + MAX_VIDEO_SIZE_MB + "MB", Toast.LENGTH_LONG).show();
                                 selectedVideoUri = null;
                                 videoFileName = "";
                             } else {
@@ -624,6 +607,22 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             return;
         }
 
+        // Verify user is still authenticated
+        if (currentUserId == null || currentUserId == -1) {
+            User user = tokenManager.getUser();
+            if (user != null) {
+                currentUserId = user.getId();
+            }
+            if (currentUserId == null || currentUserId == -1) {
+                showError("Session expired. Please login again.");
+                Intent intent = new Intent(this, LoginActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(intent);
+                finish();
+                return;
+            }
+        }
+
         // Location validation
         int checkedId = locationToggleGroup != null ? locationToggleGroup.getCheckedButtonId() : R.id.btnMapLocation;
         if (checkedId == R.id.btnMapLocation) {
@@ -659,30 +658,30 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
         showLoading(true);
 
-        // FIXED: Create Room object instead of CreateRoomRequest
-        Room room = new Room();
+        // Create Room object (just to hold data)
+        Room roomData = new Room();
 
         // Basic info
-        room.setTitle(title);
-        room.setDescription(description);
-        room.setPrice(Double.parseDouble(priceStr));
-        room.setPropertyType(propertyTypes[spinnerPropertyType.getSelectedItemPosition()]);
+        roomData.setTitle(title);
+        roomData.setDescription(description);
+        roomData.setPrice(Double.parseDouble(priceStr));
+        roomData.setPropertyType(propertyTypes[spinnerPropertyType.getSelectedItemPosition()]);
 
         // Location
-        room.setLatitude(selectedLatLng.latitude);
-        room.setLongitude(selectedLatLng.longitude);
-        room.setAddress(TextUtils.isEmpty(selectedAddress) ? "Location set" : selectedAddress);
+        roomData.setLatitude(selectedLatLng.latitude);
+        roomData.setLongitude(selectedLatLng.longitude);
+        roomData.setAddress(TextUtils.isEmpty(selectedAddress) ? "Location set" : selectedAddress);
 
         // Contact info
-        room.setContactPhone(phone);
+        roomData.setContactPhone(phone);
         String email = etContactEmail.getText().toString().trim();
         if (!TextUtils.isEmpty(email)) {
-            room.setContactEmail(email);
+            roomData.setContactEmail(email);
         }
-        room.setOwnerName(ownerName);
+        roomData.setOwnerName(ownerName);
 
         // Amenities
-        room.setAmenities(selectedAmenities);
+        roomData.setAmenities(selectedAmenities);
 
         // Counts
         int roomsCount = 1;
@@ -691,7 +690,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 roomsCount = Integer.parseInt(etRoomsCount.getText().toString());
             } catch (NumberFormatException e) {}
         }
-        room.setRoomsCount(roomsCount);
+        roomData.setRoomsCount(roomsCount);
 
         int bathroomsCount = 1;
         if (!TextUtils.isEmpty(etBathroomsCount.getText().toString())) {
@@ -699,7 +698,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 bathroomsCount = Integer.parseInt(etBathroomsCount.getText().toString());
             } catch (NumberFormatException e) {}
         }
-        room.setBathroomsCount(bathroomsCount);
+        roomData.setBathroomsCount(bathroomsCount);
 
         // Area
         double area = 0;
@@ -708,7 +707,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                 area = Double.parseDouble(etArea.getText().toString());
             } catch (NumberFormatException e) {}
         }
-        room.setArea(area);
+        roomData.setArea(area);
 
         // Rules
         String rulesText = etRules.getText().toString().trim();
@@ -722,24 +721,35 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             } else {
                 rulesList.add(rulesText);
             }
-            room.setRules(rulesList);
+            roomData.setRules(rulesList);
         }
 
-        // Owner info
-        room.setPostedBy(currentUserId);
+        // CRITICAL: Set the owner ID
+        roomData.setPostedBy(currentUserId);
+        Log.d(TAG, "Setting postedBy to: " + currentUserId);
 
         // Media flags
-        room.setHasVideo(selectedVideoUri != null);
-        room.setHasContract(selectedContractUri != null);
+        roomData.setHasVideo(selectedVideoUri != null);
+        roomData.setHasContract(selectedContractUri != null);
 
-        // Status
-        room.setAvailable(true);
-        room.setStatus("active");
+        Log.d(TAG, "Sending room creation request with postedBy: " + roomData.getPostedBy());
 
-        Log.d(TAG, "Sending room creation request");
+        // ============ CREATE REQUEST OBJECT (ONLY SEND NECESSARY FIELDS) ============
+        RoomCreateRequest request = new RoomCreateRequest(roomData);
 
-        // Create the room via API - Now using Room object
-        Call<Room> call = apiInterface.createRoom(room);
+        // Log the JSON being sent (for debugging)
+        try {
+            Gson gson = new Gson();
+            String json = gson.toJson(request);
+            Log.d(TAG, "=== REQUEST JSON ===");
+            Log.d(TAG, json);
+            Log.d(TAG, "===================");
+        } catch (Exception e) {
+            Log.e(TAG, "Error logging JSON", e);
+        }
+
+        // Create the room via API
+        Call<Room> call = apiInterface.createRoom(request);
         call.enqueue(new Callback<Room>() {
             @Override
             public void onResponse(Call<Room> call, Response<Room> response) {
@@ -749,9 +759,6 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                     Room createdRoom = response.body();
                     createdRoomId = createdRoom.getId();
                     Log.d(TAG, "✅ Room created with ID: " + createdRoomId);
-
-                    // Send notification to users
-                    sendNotificationForNewRoom(createdRoom);
 
                     // Now upload media
                     uploadMedia(createdRoomId);
@@ -779,10 +786,14 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         });
     }
 
+
+
     private void uploadMedia(long roomId) {
-        int totalUploads = selectedImageUris.size() +
-                (selectedVideoUri != null ? 1 : 0) +
-                (selectedContractUri != null ? 1 : 0);
+
+        int totalUploads =
+                (selectedImageUris.isEmpty() ? 0 : 1) +   // images = 1 request
+                        (selectedVideoUri != null ? 1 : 0) +
+                        (selectedContractUri != null ? 1 : 0);
 
         Log.d(TAG, "Starting media uploads. Total: " + totalUploads);
 
@@ -797,6 +808,7 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
         Runnable checkCompletion = () -> {
             int completed = completedUploads.incrementAndGet();
             Log.d(TAG, "Upload progress: " + completed + "/" + totalUploads);
+
             if (completed == totalUploads) {
                 runOnUiThread(() -> {
                     if (failedUploads.get() > 0) {
@@ -809,26 +821,40 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             }
         };
 
-        // Upload images
-        for (int i = 0; i < selectedImageUris.size(); i++) {
-            final int index = i;
-            Uri imageUri = selectedImageUris.get(i);
-
+        // ==================== UPLOAD IMAGES (FIXED) ====================
+        if (!selectedImageUris.isEmpty()) {
             try {
-                InputStream inputStream = getContentResolver().openInputStream(imageUri);
-                byte[] imageBytes = getBytes(inputStream);
+                List<MultipartBody.Part> parts = new ArrayList<>();
 
-                RequestBody requestFile = RequestBody.create(MediaType.parse("image/jpeg"), imageBytes);
-                MultipartBody.Part body = MultipartBody.Part.createFormData("images", "image_" + System.currentTimeMillis() + "_" + index + ".jpg", requestFile);
+                for (int i = 0; i < selectedImageUris.size(); i++) {
+                    Uri imageUri = selectedImageUris.get(i);
 
-                Call<ApiResponse<List<String>>> call = apiInterface.uploadRoomImages(roomId, body);
+                    InputStream inputStream = getContentResolver().openInputStream(imageUri);
+                    byte[] imageBytes = getBytes(inputStream);
+
+                    RequestBody requestFile = RequestBody.create(
+                            MediaType.parse("image/*"),
+                            imageBytes
+                    );
+
+                    MultipartBody.Part part = MultipartBody.Part.createFormData(
+                            "images", // MUST match backend
+                            "image_" + System.currentTimeMillis() + "_" + i + ".jpg",
+                            requestFile
+                    );
+
+                    parts.add(part);
+                }
+
+                Call<ApiResponse<List<String>>> call = apiInterface.uploadRoomImages(roomId, parts);
+
                 call.enqueue(new Callback<ApiResponse<List<String>>>() {
                     @Override
                     public void onResponse(Call<ApiResponse<List<String>>> call, Response<ApiResponse<List<String>>> response) {
                         if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                            Log.d(TAG, "✅ Image " + index + " uploaded successfully");
+                            Log.d(TAG, "✅ Images uploaded successfully");
                         } else {
-                            Log.e(TAG, "❌ Failed to upload image " + index);
+                            Log.e(TAG, "❌ Failed to upload images");
                             failedUploads.incrementAndGet();
                         }
                         checkCompletion.run();
@@ -841,17 +867,19 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                         checkCompletion.run();
                     }
                 });
+
             } catch (Exception e) {
-                Log.e(TAG, "Error preparing image: " + e.getMessage());
+                Log.e(TAG, "Error preparing images: " + e.getMessage());
                 failedUploads.incrementAndGet();
                 checkCompletion.run();
             }
         }
 
-        // Upload video
+        // ==================== UPLOAD VIDEO ====================
         if (selectedVideoUri != null) {
             try {
                 long videoSize = getFileSize(selectedVideoUri);
+
                 if (videoSize > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
                     Log.e(TAG, "Video too large: " + (videoSize / (1024 * 1024)) + "MB");
                     failedUploads.incrementAndGet();
@@ -860,23 +888,33 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
                     InputStream inputStream = getContentResolver().openInputStream(selectedVideoUri);
                     byte[] videoBytes = getBytes(inputStream);
 
-                    Log.d(TAG, "Video size: " + (videoBytes.length / (1024 * 1024)) + "MB");
+                    RequestBody requestFile = RequestBody.create(
+                            MediaType.parse("video/mp4"),
+                            videoBytes
+                    );
 
-                    RequestBody requestFile = RequestBody.create(MediaType.parse("video/mp4"), videoBytes);
-                    MultipartBody.Part body = MultipartBody.Part.createFormData("video", videoFileName, requestFile);
+                    MultipartBody.Part body = MultipartBody.Part.createFormData(
+                            "video",
+                            videoFileName,
+                            requestFile
+                    );
 
                     Call<ApiResponse<String>> call = apiInterface.uploadRoomVideo(roomId, body);
+
                     call.enqueue(new Callback<ApiResponse<String>>() {
                         @Override
                         public void onResponse(Call<ApiResponse<String>> call, Response<ApiResponse<String>> response) {
                             if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                                Log.d(TAG, "✅ Video uploaded successfully");
+                                Log.d(TAG, "Video uploaded successfully");
                             } else {
-                                Log.e(TAG, "❌ Failed to upload video. Code: " + response.code());
+                                Log.e(TAG, " Failed to upload video. Code: " + response.code());
+
                                 if (response.code() == 413) {
-                                    Log.e(TAG, "Video too large for server");
-                                    runOnUiThread(() -> showError("Video too large. Please select a smaller video (under 10MB)"));
+                                    runOnUiThread(() ->
+                                            showError("Video too large. Please select a smaller video (under 10MB)")
+                                    );
                                 }
+
                                 failedUploads.incrementAndGet();
                             }
                             checkCompletion.run();
@@ -884,12 +922,13 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
                         @Override
                         public void onFailure(Call<ApiResponse<String>> call, Throwable t) {
-                            Log.e(TAG, "❌ Video upload failed: " + t.getMessage());
+                            Log.e(TAG, "Video upload failed: " + t.getMessage());
                             failedUploads.incrementAndGet();
                             checkCompletion.run();
                         }
                     });
                 }
+
             } catch (Exception e) {
                 Log.e(TAG, "Error preparing video: " + e.getMessage());
                 failedUploads.incrementAndGet();
@@ -897,25 +936,32 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
             }
         }
 
-        // Upload contract
+        // ==================== UPLOAD CONTRACT ====================
         if (selectedContractUri != null) {
             try {
                 InputStream inputStream = getContentResolver().openInputStream(selectedContractUri);
                 byte[] contractBytes = getBytes(inputStream);
 
-                Log.d(TAG, "Contract size: " + (contractBytes.length / 1024) + "KB");
+                RequestBody requestFile = RequestBody.create(
+                        MediaType.parse("application/pdf"),
+                        contractBytes
+                );
 
-                RequestBody requestFile = RequestBody.create(MediaType.parse("application/pdf"), contractBytes);
-                MultipartBody.Part body = MultipartBody.Part.createFormData("contract", contractFileName, requestFile);
+                MultipartBody.Part body = MultipartBody.Part.createFormData(
+                        "contract",
+                        contractFileName,
+                        requestFile
+                );
 
                 Call<ApiResponse<String>> call = apiInterface.uploadRoomContract(roomId, body);
+
                 call.enqueue(new Callback<ApiResponse<String>>() {
                     @Override
                     public void onResponse(Call<ApiResponse<String>> call, Response<ApiResponse<String>> response) {
                         if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
                             Log.d(TAG, "✅ Contract uploaded successfully");
                         } else {
-                            Log.e(TAG, "❌ Failed to upload contract");
+                            Log.e(TAG, "Failed to upload contract");
                             failedUploads.incrementAndGet();
                         }
                         checkCompletion.run();
@@ -923,11 +969,12 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
 
                     @Override
                     public void onFailure(Call<ApiResponse<String>> call, Throwable t) {
-                        Log.e(TAG, "❌ Contract upload failed: " + t.getMessage());
+                        Log.e(TAG, " Contract upload failed: " + t.getMessage());
                         failedUploads.incrementAndGet();
                         checkCompletion.run();
                     }
                 });
+
             } catch (Exception e) {
                 Log.e(TAG, "Error preparing contract: " + e.getMessage());
                 failedUploads.incrementAndGet();

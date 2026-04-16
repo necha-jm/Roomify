@@ -24,6 +24,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.viewpager2.widget.ViewPager2;
 
+import com.app.roomify.network.TokenManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.List;
@@ -52,6 +53,8 @@ public class MediaViewerActivity extends AppCompatActivity {
     private TextView tvTitle;
     private LinearLayout imageIndicator;
     private MediaController mediaController;
+    private TokenManager tokenManager;
+
 
     private int mediaType;
     private List<String> mediaUrls;
@@ -86,6 +89,36 @@ public class MediaViewerActivity extends AppCompatActivity {
 
         // Initialize MediaController
         mediaController = new MediaController(this);
+
+        // Initialize TokenManager
+        tokenManager = new TokenManager(this);
+    }
+
+    // Update setupImageViewer method
+    private void setupImageViewer() {
+        if (viewPagerImages != null) {
+            viewPagerImages.setVisibility(View.VISIBLE);
+        }
+        if (videoView != null) {
+            videoView.setVisibility(View.GONE);
+        }
+        if (documentViewer != null) {
+            documentViewer.setVisibility(View.GONE);
+        }
+        if (imageIndicator != null) {
+            imageIndicator.setVisibility(View.VISIBLE);
+        }
+
+        if (mediaUrls != null && !mediaUrls.isEmpty()) {
+            // Pass TokenManager to adapter
+            ImagePagerAdapter adapter = new ImagePagerAdapter(mediaUrls, tokenManager);
+            viewPagerImages.setAdapter(adapter);
+            viewPagerImages.setCurrentItem(currentPosition, false);
+            setupImageIndicator();
+        } else {
+            Toast.makeText(this, "No images available", Toast.LENGTH_SHORT).show();
+            finish();
+        }
     }
 
     private void getIntentData() {
@@ -170,31 +203,6 @@ public class MediaViewerActivity extends AppCompatActivity {
         }
     }
 
-    private void setupImageViewer() {
-        if (viewPagerImages != null) {
-            viewPagerImages.setVisibility(View.VISIBLE);
-        }
-        if (videoView != null) {
-            videoView.setVisibility(View.GONE);
-        }
-        if (documentViewer != null) {
-            documentViewer.setVisibility(View.GONE);
-        }
-        if (imageIndicator != null) {
-            imageIndicator.setVisibility(View.VISIBLE);
-        }
-
-        if (mediaUrls != null && !mediaUrls.isEmpty()) {
-            ImagePagerAdapter adapter = new ImagePagerAdapter(mediaUrls);
-            viewPagerImages.setAdapter(adapter);
-            viewPagerImages.setCurrentItem(currentPosition, false);
-            setupImageIndicator();
-        } else {
-            Toast.makeText(this, "No images available", Toast.LENGTH_SHORT).show();
-            finish();
-        }
-    }
-
     private void setupVideoViewer() {
         if (viewPagerImages != null) {
             viewPagerImages.setVisibility(View.GONE);
@@ -218,6 +226,7 @@ public class MediaViewerActivity extends AppCompatActivity {
         }
     }
 
+
     private void playVideo(String videoUrl) {
         if (videoProgressBar != null) {
             videoProgressBar.setVisibility(View.VISIBLE);
@@ -225,17 +234,24 @@ public class MediaViewerActivity extends AppCompatActivity {
 
         try {
             Uri videoUri = Uri.parse(videoUrl);
-            videoView.setVideoURI(videoUri);
+
+            // Clear any existing video
+            videoView.stopPlayback();
+            videoView.suspend();
 
             // Set up media controller
             mediaController.setAnchorView(videoView);
             videoView.setMediaController(mediaController);
+
+            // Set video URI and start
+            videoView.setVideoURI(videoUri);
 
             videoView.setOnPreparedListener(mp -> {
                 if (videoProgressBar != null) {
                     videoProgressBar.setVisibility(View.GONE);
                 }
                 mp.setLooping(false);
+                mp.setVolume(1.0f, 1.0f);
                 videoView.start();
             });
 
@@ -262,7 +278,6 @@ public class MediaViewerActivity extends AppCompatActivity {
             showVideoErrorDialog(videoUrl);
         }
     }
-
     private void showVideoErrorDialog(String videoUrl) {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Video Playback Error")

@@ -9,6 +9,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.app.roomify.network.APIClient;
 import com.bumptech.glide.Glide;
 
 import java.util.ArrayList;
@@ -38,8 +39,19 @@ public class RoomAdapter extends RecyclerView.Adapter<RoomAdapter.MyViewHolder> 
 
         List<String> images = room.getImages();
         if(images != null && !images.isEmpty()){
+            String imageUrl = images.get(0);
+            
+            // Ensure full URL for Glide
+            if (imageUrl != null && !imageUrl.startsWith("http")) {
+                if (imageUrl.startsWith("/")) {
+                    imageUrl = APIClient.BASE_URL.replaceAll("/$", "") + imageUrl;
+                } else {
+                    imageUrl = APIClient.BASE_URL.replaceAll("/$", "") + "/" + imageUrl;
+                }
+            }
+
             Glide.with(holder.ivRoomImage.getContext())
-                    .load(images.get(0))
+                    .load(imageUrl)
                     .placeholder(R.drawable.ic_back)
                     .error(R.drawable.ic_back)
                     .into(holder.ivRoomImage);

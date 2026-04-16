@@ -25,6 +25,8 @@ public class BookingResponseAdapter extends RecyclerView.Adapter<BookingResponse
         void onAction(BookingResponse booking, String action);
     }
 
+
+
     public BookingResponseAdapter(List<BookingResponse> bookings, OnBookingActionListener listener) {
         this.bookings = bookings != null ? bookings : new ArrayList<>();
         this.actionListener = listener;

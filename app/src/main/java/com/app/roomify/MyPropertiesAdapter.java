@@ -10,6 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.app.roomify.network.APIClient;
 import com.bumptech.glide.Glide;
 
 import java.util.List;
@@ -85,6 +86,16 @@ public class MyPropertiesAdapter extends RecyclerView.Adapter<MyPropertiesAdapte
         if (room.hasImages()) {
             String imageUrl = room.getFirstImageUrl();
             if (imageUrl != null && !imageUrl.isEmpty()) {
+                
+                // Ensure full URL
+                if (!imageUrl.startsWith("http")) {
+                    if (imageUrl.startsWith("/")) {
+                        imageUrl = APIClient.BASE_URL.replaceAll("/$", "") + imageUrl;
+                    } else {
+                        imageUrl = APIClient.BASE_URL.replaceAll("/$", "") + "/" + imageUrl;
+                    }
+                }
+
                 try {
                     Glide.with(holder.itemView.getContext())
                             .load(imageUrl)

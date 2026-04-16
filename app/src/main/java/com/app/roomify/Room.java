@@ -1,7 +1,10 @@
 package com.app.roomify;
 
+import androidx.room.ColumnInfo;
+
 import com.google.firebase.firestore.Exclude;
 import com.google.firebase.firestore.IgnoreExtraProperties;
+import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
 import java.util.ArrayList;
@@ -12,8 +15,16 @@ public class Room {
 
     // ==================== BASIC IDENTIFICATION ====================
     @SerializedName("id")
+    @Expose(serialize = false)  // Don't send to server
+
     private long id;
 
+
+    @ColumnInfo(name = "server_id")
+    private long serverId;
+
+    @ColumnInfo(name = "synced")
+    private boolean synced;
     private String title;
     private String description;
     private String propertyType;
@@ -43,8 +54,12 @@ public class Room {
     private List<String> amenities;
     private List<String> rules;
 
+
+
     // ==================== MEDIA FILES ====================
     private List<String> images;
+
+    @Expose(serialize = false)  // Don't send to server
     private int imageCount;
     private boolean hasVideo;
     private boolean hasContract;
@@ -179,6 +194,12 @@ public class Room {
     public String getFirstImageUrl() {
         return (images != null && !images.isEmpty()) ? images.get(0) : null;
     }
+
+    public long getServerId() { return serverId; }
+    public void setServerId(long serverId) { this.serverId = serverId; }
+
+    public boolean isSynced() { return synced; }
+    public void setSynced(boolean synced) { this.synced = synced; }
 
     @Exclude
     public boolean hasImages() { return (images != null && !images.isEmpty()) || imageCount > 0; }

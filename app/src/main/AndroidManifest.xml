@@ -116,7 +116,7 @@
             android:name=".MediaViewerActivity"
             android:configChanges="orientation|screenSize"
             android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" /> <!-- Firebase Messaging Service -->
+            android:theme="@style/Theme.Roomify" /> <!-- Firebase Messaging Service -->
         <service
             android:name=".MyFirebaseMessagingService"
             android:enabled="true"

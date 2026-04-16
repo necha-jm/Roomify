@@ -18,14 +18,15 @@
         <!-- Image Section -->
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="160dp">
+            android:layout_height="200dp">
 
             <ImageView
                 android:id="@+id/ivPropertyImage"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"
-                android:src="@drawable/ic_profile" />
+                android:src="@drawable/ic_profile"
+                android:adjustViewBounds="true" />
 
             <!-- Availability Badge -->
             <LinearLayout
@@ -42,8 +43,8 @@
 
                 <ImageView
                     android:id="@+id/ivAvailability"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
                     android:src="@drawable/ic_check_circle"
                     android:layout_marginEnd="6dp" />
 
@@ -52,7 +53,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Available"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:textColor="@color/green_success"
                     android:textStyle="bold" />
 
@@ -159,8 +160,8 @@
 
                 <ImageView
                     android:id="@+id/btnEdit"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
                     android:src="@drawable/edit"
                     android:padding="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
@@ -169,8 +170,8 @@
 
                 <ImageView
                     android:id="@+id/btnDelete"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
                     android:src="@drawable/delete"
                     android:padding="8dp"
                     android:layout_marginStart="8dp"

@@ -124,8 +124,63 @@ public class FirebaseUtils {
         }
     }
 
-    // Save a room to backend
+    // ==================== UPDATED SAVE ROOM METHOD ====================
+    // Save a room to backend - FIXED VERSION
     public static void saveRoom(Room room, SuccessCallback callback) {
+        if (room == null || appContext == null) {
+            if (callback != null) callback.onSuccess(false, "Room is null");
+            return;
+        }
+
+        // Create the request object with only necessary fields
+        RoomCreateRequest request = new RoomCreateRequest(room);
+
+        // Log the request for debugging
+        try {
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            String json = gson.toJson(request);
+            Log.d(TAG, "Saving room with JSON: " + json);
+        } catch (Exception e) {
+            Log.e(TAG, "Error logging JSON", e);
+        }
+
+        TokenManager tokenManager = new TokenManager(appContext);
+        APIInterface apiInterface = APIClient.getClient().create(APIInterface.class);
+
+        // Use the new request object instead of Room directly
+        Call<Room> call = apiInterface.createRoom(request);
+        call.enqueue(new Callback<Room>() {
+            @Override
+            public void onResponse(Call<Room> call, Response<Room> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Room createdRoom = response.body();
+                    Log.d(TAG, "Room saved successfully with ID: " + createdRoom.getId());
+                    if (callback != null) callback.onSuccess(true, "Room saved successfully");
+                } else {
+                    String errorMsg = "Failed to save room";
+                    try {
+                        if (response.errorBody() != null) {
+                            errorMsg = response.errorBody().string();
+                            Log.e(TAG, "Error body: " + errorMsg);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error body", e);
+                    }
+                    if (callback != null) callback.onSuccess(false, errorMsg);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Room> call, Throwable t) {
+                Log.e(TAG, "Error saving room: " + t.getMessage());
+                if (callback != null) callback.onSuccess(false, t.getMessage());
+            }
+        });
+    }
+
+    // ==================== LEGACY SAVE ROOM (DEPRECATED - FOR BACKWARD COMPATIBILITY) ====================
+    @Deprecated
+    public static void saveRoomLegacy(Room room, SuccessCallback callback) {
         if (room == null || appContext == null) {
             if (callback != null) callback.onSuccess(false, "Room is null");
             return;
@@ -134,23 +189,14 @@ public class FirebaseUtils {
         TokenManager tokenManager = new TokenManager(appContext);
         APIInterface apiInterface = APIClient.getClient().create(APIInterface.class);
 
-        Call<Room> call = apiInterface.createRoom(room);
+        Call<Room> call = apiInterface.createRoomLegacy(room); // You would need to add this to APIInterface
         call.enqueue(new Callback<Room>() {
             @Override
             public void onResponse(Call<Room> call, Response<Room> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    Room createdRoom = response.body();
                     if (callback != null) callback.onSuccess(true, "Room saved successfully");
                 } else {
-                    String errorMsg = "Failed to save room";
-                    try {
-                        if (response.errorBody() != null) {
-                            errorMsg = response.errorBody().string();
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error reading error body", e);
-                    }
-                    if (callback != null) callback.onSuccess(false, errorMsg);
+                    if (callback != null) callback.onSuccess(false, "Failed to save room");
                 }
             }
 
@@ -346,4 +392,3 @@ public class FirebaseUtils {
         }
     }
 }
-

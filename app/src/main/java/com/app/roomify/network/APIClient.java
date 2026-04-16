@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 public class APIClient {
 
-    private static final String BASE_URL = "https://roomify-backend-2.onrender.com/";
+    public static final String BASE_URL = "https://roomify-backend-2.onrender.com/";
     private static Retrofit retrofit = null;
     private static TokenManager tokenManager;
 

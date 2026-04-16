@@ -3,6 +3,7 @@ package com.app.roomify.network;
 import com.app.roomify.BookingRequest;
 import com.app.roomify.NotificationRequest;
 import com.app.roomify.Room;
+import com.app.roomify.RoomCreateRequest;
 import com.app.roomify.models.*;
 
 import java.util.List;
@@ -58,6 +59,8 @@ public interface APIInterface {
     @POST("/api/notifications/send-room-notification")
     Call<ApiResponse<Void>> sendRoomNotification(@Query("roomId") Long roomId);
 
+
+
     @POST("/api/notifications/send-booking-notification")
     Call<ApiResponse<Void>> sendBookingNotification(
             @Query("ownerId") Long ownerId,
@@ -72,7 +75,11 @@ public interface APIInterface {
     // ==================== ROOM ENDPOINTS ====================
 
     @POST("/api/rooms")
-    Call<Room> createRoom(@Body Room request);
+    Call<Room> createRoom(@Body RoomCreateRequest request);
+
+    // Old method (if needed for backward compatibility)
+    @POST("/api/rooms")
+    Call<Room> createRoomLegacy(@Body Room room);
 
     @GET("/api/rooms")
     Call<List<Room>> getAllRooms();
@@ -165,7 +172,7 @@ public interface APIInterface {
     @POST("/api/rooms/{roomId}/images")
     Call<ApiResponse<List<String>>> uploadRoomImages(
             @Path("roomId") long roomId,
-            @Part MultipartBody.Part images
+            @Part List<MultipartBody.Part> images
     );
 
     @Multipart
