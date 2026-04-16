@@ -311,12 +311,17 @@ public class LoginActivity extends AppCompatActivity {
     private void signInWithGoogle() {
         try {
             showLoading(true);
-            Intent signInIntent = googleSignInClient.getSignInIntent();
-            startActivityForResult(signInIntent, RC_SIGN_IN);
+
+            // Optional: Sign out first to always show account picker
+            googleSignInClient.signOut().addOnCompleteListener(task -> {
+                Intent signInIntent = googleSignInClient.getSignInIntent();
+                startActivityForResult(signInIntent, RC_SIGN_IN);
+            });
+
         } catch (Exception e) {
             showLoading(false);
             Log.e(TAG, "Google Sign-In error", e);
-            Toast.makeText(this, "Error starting Google Sign-In", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Error starting Google Sign-In: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
