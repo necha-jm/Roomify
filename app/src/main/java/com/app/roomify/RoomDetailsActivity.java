@@ -552,37 +552,41 @@ public class RoomDetailsActivity extends AppCompatActivity {
     private void loadVideoThumbnail(String videoUrl) {
         if (ivVideoThumbnail == null) return;
 
-        // Set default placeholder
-        ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
-
-        if (videoUrl != null && !videoUrl.isEmpty()) {
-            // Check if it's a local file URI or remote URL
-            if (videoUrl.startsWith("content://") || videoUrl.startsWith("file://")) {
-                // Local file - use Glide with local URI
-                try {
-                    Glide.with(this)
-                            .load(Uri.parse(videoUrl))
-                            .placeholder(android.R.drawable.ic_media_play)
-                            .error(android.R.drawable.ic_media_play)
-                            .into(ivVideoThumbnail);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to load local video thumbnail: " + e.getMessage());
-                    ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
-                }
-            } else {
-                // Remote URL - try to load with Glide, but handle errors gracefully
-                try {
-                    Glide.with(this)
-                            .load(videoUrl)
-                            .placeholder(android.R.drawable.ic_media_play)
-                            .error(android.R.drawable.ic_media_play)
-                            .into(ivVideoThumbnail);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to load remote video thumbnail: " + e.getMessage());
-                    ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
-                }
-            }
+        if (videoUrl == null || videoUrl.isEmpty()) {
+            ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
+            return;
         }
+
+        // Only handle remote URLs
+        if (!videoUrl.startsWith("http")) {
+            ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
+            return;
+        }
+
+        executorService.execute(() -> {
+            try {
+                android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever();
+                retriever.setDataSource(videoUrl, new java.util.HashMap<>());
+
+                android.graphics.Bitmap bitmap = retriever.getFrameAtTime(1000000); // 1 sec
+
+                runOnUiThread(() -> {
+                    if (bitmap != null) {
+                        ivVideoThumbnail.setImageBitmap(bitmap);
+                    } else {
+                        ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
+                    }
+                });
+
+                retriever.release();
+
+            } catch (Exception e) {
+                Log.e(TAG, "Thumbnail error: " + e.getMessage());
+                runOnUiThread(() ->
+                        ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play)
+                );
+            }
+        });
     }
 
     // ==================== MAP METHODS ====================
@@ -659,26 +663,45 @@ public class RoomDetailsActivity extends AppCompatActivity {
     }
 
     private void playVideo() {
-        if (!hasVideo || videoUrl == null || videoUrl.isEmpty()) {
+        if (videoUrl == null || videoUrl.trim().isEmpty()) {
             Toast.makeText(this, "No video available", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        List<String> videoUrls = new ArrayList<>();
-        videoUrls.add(videoUrl);
+        // ONLY allow valid remote URLs
+        if (!videoUrl.startsWith("http")) {
+            Toast.makeText(this, "Video not available (invalid source)", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Invalid video URL: " + videoUrl);
+            return;
+        }
 
-        Intent intent = new Intent(this, MediaViewerActivity.class);
-        // FIXED: Pass as Integer, not String
-        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_VIDEO);  // This is int
-        intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(videoUrls));
-        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE, currentRoom.getTitle());
-        startActivity(intent);
+        try {
+            List<String> videoUrls = new ArrayList<>();
+            videoUrls.add(videoUrl);
+
+            Intent intent = new Intent(this, MediaViewerActivity.class);
+            intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_VIDEO);
+            intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(videoUrls));
+            intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE,
+                    currentRoom != null ? currentRoom.getTitle() : "Room Video");
+
+            startActivity(intent);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error playing video: " + e.getMessage());
+            Toast.makeText(this, "Error playing video", Toast.LENGTH_SHORT).show();
+        }
     }
 
-
     private void downloadVideo() {
-        if (!hasVideo || videoUrl == null || videoUrl.isEmpty()) {
+        if (videoUrl == null || videoUrl.trim().isEmpty()) {
             Toast.makeText(this, "No video available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!videoUrl.startsWith("http")) {
+            Toast.makeText(this, "Invalid video URL", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Invalid download URL: " + videoUrl);
             return;
         }
 

@@ -7,6 +7,9 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
 import android.location.Address;
 import android.location.Geocoder;
@@ -52,6 +55,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
@@ -175,6 +179,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         setupClickListeners();
         setupSearch();
         setupSearchButton();
+
 
         // Check location and permissions
         if (!isLocationEnabled()) {
@@ -319,10 +324,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             if (fabLocation != null) {
                 fabLocation.setOnClickListener(v -> {
                     if (currentLocation != null && myMap != null) {
-                        LatLng myLocation = new LatLng(
+                        LatLng latLng = new LatLng(
                                 currentLocation.getLatitude(),
                                 currentLocation.getLongitude());
-                        myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 16f));
+                        animateToLocation(latLng, 16f);
                     } else {
                         getLastLocationWithTimeout();
                     }
@@ -351,6 +356,17 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         } catch (Exception e) {
             Log.e(TAG, "Error setting up click listeners: " + e.getMessage());
         }
+    }
+
+
+    private void animateToLocation(LatLng latLng, float zoom) {
+        if (myMap == null || latLng == null) return;
+
+        myMap.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(latLng, zoom),
+                1000,
+                null
+        );
     }
 
     private void changeLanguage(String lang) {
@@ -410,11 +426,11 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         searchEditText.setText("");
                         clearSearchMarker();
                         if (currentLocation != null && myMap != null) {
-                            LatLng myLocation = new LatLng(
+                            LatLng latLng  = new LatLng(
                                     currentLocation.getLatitude(),
                                     currentLocation.getLongitude()
                             );
-                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 14f));
+                            animateToLocation(latLng, 16f);
                             Toast.makeText(this, "Returned to your location", Toast.LENGTH_SHORT).show();
                         }
                         return true;
@@ -432,6 +448,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void performImprovedSearch(String query) {
+
         if (query.isEmpty() || myMap == null) {
             Toast.makeText(this, "Cannot perform search", Toast.LENGTH_SHORT).show();
             return;
@@ -451,8 +468,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         Address address = addresses.get(0);
                         LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
 
-                        myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f));
-
+                        animateToLocation(latLng, 16f);
                         if (searchMarker == null) {
                             searchMarker = myMap.addMarker(new MarkerOptions()
                                     .position(latLng)
@@ -597,8 +613,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         currentLocation = location;
                         Log.d(TAG, "New location obtained: " + location.getLatitude() + ", " + location.getLongitude());
                         if (myMap != null) {
-                            LatLng myLocation = new LatLng(location.getLatitude(), location.getLongitude());
-                            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 16f));
+                            LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                            animateToLocation(latLng, 16f);
                             updateCurrentLocationMarker(location);
                         } else {
                             initMap();
@@ -691,20 +707,48 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
-        if (currentLocationMarker == null) {
-            currentLocationMarker = myMap.addMarker(
-                    new MarkerOptions()
-                            .position(latLng)
-                            .title("My Location")
-                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
-            );
-        } else {
-            currentLocationMarker.setPosition(latLng);
+        // Remove old marker
+        if (currentLocationMarker != null) {
+            currentLocationMarker.remove();
         }
 
+        // Add custom marker
+        currentLocationMarker = myMap.addMarker(
+                new MarkerOptions()
+                        .position(latLng)
+                        .title("my locatio")
+                        .icon(getResizedMarker(R.drawable.ic_location, 80, 80))
+        );
+
+        // Add circle effect (modern look)
+        myMap.addCircle(new com.google.android.gms.maps.model.CircleOptions()
+                .center(latLng)
+                .radius(50)
+                .strokeWidth(2f)
+                .strokeColor(android.graphics.Color.BLUE)
+                .fillColor(0x220000FF)
+        );
+
         if (isFirstLocationUpdate) {
-            myMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 14f));
+            animateToLocation(latLng, 14f);
             isFirstLocationUpdate = false;
+        }
+    }
+
+    private void showRoomPreview(Room room) {
+        if (bottomSheetBehavior == null) return;
+
+        try {
+            bottomSheetBehavior.setState(
+                    com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+            );
+
+            Toast.makeText(this,
+                    room.getTitle() + " - $" + room.getPrice(),
+                    Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing room preview: " + e.getMessage());
         }
     }
 
@@ -744,6 +788,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         Log.d(TAG, "Map is ready");
         myMap = googleMap;
         isMapReady = true;
+
+        applyMapStyle();
+        applyDarkModeIfNeeded();
 
         myMap.getUiSettings().setZoomControlsEnabled(true);
         myMap.getUiSettings().setCompassEnabled(true);
@@ -839,6 +886,28 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 Toast.makeText(LocationMap.this, "Using cached data (offline mode)", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private BitmapDescriptor getResizedMarker(int drawableRes, int width, int height) {
+        Bitmap imageBitmap = BitmapFactory.decodeResource(getResources(), drawableRes);
+        Bitmap resizedBitmap = Bitmap.createScaledBitmap(imageBitmap, width, height, false);
+        return BitmapDescriptorFactory.fromBitmap(resizedBitmap);
+    }
+
+    private void applyDarkModeIfNeeded() {
+        int nightModeFlags = getResources().getConfiguration().uiMode &
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+
+        if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+            try {
+                myMap.setMapStyle(
+                        com.google.android.gms.maps.model.MapStyleOptions
+                                .loadRawResourceStyle(this, R.raw.map_style)
+                );
+            } catch (Exception e) {
+                Log.e(TAG, "Dark mode style error", e);
+            }
+        }
     }
 
     private void loadRoomsFromLocalDatabase() {
@@ -1005,16 +1074,16 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 switch (status.toUpperCase()) {
                     case "PENDING":
                         markerColor = BitmapDescriptorFactory.HUE_ORANGE;
-                        snippet = "⚠️ Pending Request";
+                        snippet = " Pending Request";
                         break;
                     case "ACCEPTED":
                     case "CONFIRMED":
                         markerColor = BitmapDescriptorFactory.HUE_GREEN;
-                        snippet = "✅ Booking Approved";
+                        snippet = "Booking Approved";
                         break;
                     case "REJECTED":
                         markerColor = BitmapDescriptorFactory.HUE_RED;
-                        snippet = "❌ Request Rejected";
+                        snippet = " Request Rejected";
                         break;
                     case "CANCELLED":
                         markerColor = BitmapDescriptorFactory.HUE_VIOLET;
@@ -1074,6 +1143,24 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 || executorService.isShutdown()
                 || executorService.isTerminated()) {
             executorService = Executors.newSingleThreadExecutor();
+        }
+    }
+
+
+    private void applyMapStyle() {
+        if (myMap == null) return;
+
+        try {
+            boolean success = myMap.setMapStyle(
+                    com.google.android.gms.maps.model.MapStyleOptions
+                            .loadRawResourceStyle(this, R.raw.map_style)
+            );
+
+            if (!success) {
+                Log.e(TAG, "Map style parsing failed.");
+            }
+        } catch (Resources.NotFoundException e) {
+            Log.e(TAG, "Map style not found.", e);
         }
     }
 

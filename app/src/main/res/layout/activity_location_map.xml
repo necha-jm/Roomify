@@ -7,7 +7,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    android:background="@color/surface"
+    android:background="@drawable/gradient_background_main"
     tools:context=".MainActivity">
 
     <!-- Google Map Fragment -->
@@ -18,14 +18,8 @@
         android:layout_height="match_parent" />
 
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:background="@drawable/gradient_overlay_top"
-        android:alpha="0.6" />
 
-    <!-- Enhanced Search Bar with Modern Design -->
-
+    <!-- Enhanced Search Bar with Vibrant Colors -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab_location"
         android:layout_width="37dp"
@@ -34,8 +28,8 @@
         android:layout_marginEnd="12dp"
         android:contentDescription="@string/todo"
         android:src="@drawable/ic_my_location"
-        app:backgroundTint="?attr/colorPrimary"
-        app:elevation="0dp"
+        app:backgroundTint="@color/vibrant_teal"
+        app:elevation="6dp"
         app:fabSize="mini"
         app:tint="@android:color/white" />
 
@@ -47,10 +41,12 @@
         android:layout_marginTop="48dp"
         android:layout_marginEnd="20dp"
         app:cardCornerRadius="32dp"
-        app:cardElevation="12dp"
-        app:cardBackgroundColor="@android:color/white"
+        app:cardElevation="16dp"
+        app:cardBackgroundColor="@color/card_warm"
         app:cardPreventCornerOverlap="true"
-        app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
+        app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior"
+        app:strokeColor="@color/vibrant_coral"
+        app:strokeWidth="1.5dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -66,8 +62,8 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="12dp"
                 android:src="@drawable/ic_search"
-                app:tint="?attr/colorPrimary"
-                android:alpha="0.8" />
+                app:tint="@color/vibrant_purple"
+                android:alpha="0.9" />
 
             <EditText
                 android:id="@+id/search_edittext"
@@ -84,9 +80,10 @@
                 android:elevation="12dp"
                 android:translationZ="12dp"
                 android:fontFamily="sans-serif"
-                android:textColorHint="@color/text_secondary" />
+                android:textColorHint="@color/text_hint_warm"
+                android:textColor="@color/text_dark_warm" />
 
-            <!-- NEW: Search Button -->
+            <!-- Colorful Search Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_search_address"
                 android:layout_width="wrap_content"
@@ -96,11 +93,12 @@
                 android:textAllCaps="false"
                 android:fontFamily="sans-serif-medium"
                 android:textSize="14sp"
+                android:textColor="@android:color/white"
                 app:cornerRadius="22dp"
-                app:backgroundTint="?attr/colorPrimary"
+                app:backgroundTint="@color/vibrant_orange"
                 android:paddingStart="16dp"
-                android:paddingEnd="16dp" />
-
+                android:paddingEnd="16dp"
+                app:elevation="2dp" />
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -116,14 +114,14 @@
         app:behavior_peekHeight="120dp"
         app:behavior_hideable="false">
 
-        <!-- Enhanced Bottom Sheet Handle with Ripple Effect -->
+        <!-- Enhanced Bottom Sheet Handle with Gradient -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingTop="8dp"
             android:paddingBottom="4dp"
-            android:background="@drawable/bottom_sheet_handle_background"
+            android:background="@drawable/bottom_sheet_handle_background_gradient"
             android:clickable="true"
             android:focusable="true">
 
@@ -131,23 +129,23 @@
                 android:layout_width="48dp"
                 android:layout_height="5dp"
                 android:layout_gravity="center_horizontal"
-                android:background="@drawable/bottom_sheet_handle"
-                android:alpha="0.5" />
+                android:background="@drawable/bottom_sheet_handle_colorful"
+                android:alpha="0.7" />
 
             <View
                 android:layout_width="32dp"
                 android:layout_height="5dp"
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="2dp"
-                android:background="@drawable/bottom_sheet_handle"
-                android:alpha="0.3" />
+                android:background="@drawable/bottom_sheet_handle_colorful"
+                android:alpha="0.5" />
         </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             app:cardCornerRadius="28dp"
-            app:cardBackgroundColor="@android:color/white"
+            app:cardBackgroundColor="@color/bottom_sheet_bg"
             app:elevation="20dp"
             app:cardElevation="0dp">
 
@@ -164,7 +162,7 @@
                     android:padding="24dp"
                     android:paddingTop="8dp">
 
-                    <!-- Header Section - FIXED SETTINGS BUTTON -->
+                    <!-- Header Section with Colorful Title -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="47dp"
@@ -179,7 +177,7 @@
                             android:fontFamily="sans-serif-medium"
                             android:letterSpacing="-0.02"
                             android:text="@string/make_decision"
-                            android:textColor="@android:color/black"
+                            android:textColor="@color/header_deep_purple"
                             android:textSize="28sp"
                             android:textStyle="bold" />
 
@@ -187,24 +185,24 @@
                             android:id="@+id/btn_settings"
                             android:layout_width="48dp"
                             android:layout_height="48dp"
-                            android:background="@drawable/circular_background"
+                            android:background="@drawable/circular_background_vibrant"
                             android:clickable="true"
                             android:contentDescription="@string/settings"
                             android:focusable="true"
                             android:padding="12dp"
                             android:src="@android:drawable/ic_menu_manage"
-                            app:tint="@android:color/black" />
+                            app:tint="@color/vibrant_teal" />
 
                     </LinearLayout>
 
-                    <!-- Quick Actions Section with Enhanced Cards -->
+                    <!-- Quick Actions Section with Colorful Cards -->
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/quick_actions"
                         android:textSize="18sp"
                         android:textStyle="bold"
-                        android:textColor="@android:color/black"
+                        android:textColor="@color/vibrant_purple"
                         android:layout_marginBottom="20dp"
                         android:fontFamily="sans-serif-medium"
                         android:letterSpacing="-0.01" />
@@ -219,7 +217,7 @@
                         android:layout_marginBottom="36dp"
                         android:padding="4dp">
 
-                        <!-- Apartment Card -->
+                        <!-- Apartment Card with Gradient -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/apartment_card"
                             android:layout_width="0dp"
@@ -228,9 +226,10 @@
                             android:layout_margin="6dp"
                             android:layout_rowWeight="1"
                             app:cardCornerRadius="20dp"
-                            app:strokeColor="?attr/colorPrimary"
-                            app:strokeWidth="0dp"
-                            app:cardElevation="2dp"
+                            app:strokeColor="@color/vibrant_coral"
+                            app:strokeWidth="1dp"
+                            app:cardBackgroundColor="@color/card_apartment"
+                            app:cardElevation="4dp"
                             android:foreground="?attr/selectableItemBackgroundBorderless"
                             android:stateListAnimator="@animator/card_state_animator">
 
@@ -246,7 +245,7 @@
                                     android:layout_width="40dp"
                                     android:layout_height="40dp"
                                     android:src="@drawable/ic_apartment"
-                                    app:tint="?attr/colorPrimary"
+                                    app:tint="@color/vibrant_teal"
                                     android:alpha="0.9" />
 
                                 <TextView
@@ -254,7 +253,7 @@
                                     android:layout_height="wrap_content"
                                     android:text="@string/apartment"
                                     android:textSize="13sp"
-                                    android:textColor="@android:color/black"
+                                    android:textColor="@color/text_dark_warm"
                                     android:layout_marginTop="10dp"
                                     android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
@@ -269,9 +268,10 @@
                             android:layout_margin="6dp"
                             android:layout_rowWeight="1"
                             app:cardCornerRadius="20dp"
-                            app:strokeColor="?attr/colorPrimary"
-                            app:strokeWidth="0dp"
-                            app:cardElevation="2dp"
+                            app:strokeColor="@color/vibrant_orange"
+                            app:strokeWidth="1dp"
+                            app:cardBackgroundColor="@color/card_add_room"
+                            app:cardElevation="4dp"
                             android:foreground="?attr/selectableItemBackgroundBorderless"
                             android:stateListAnimator="@animator/card_state_animator">
 
@@ -287,7 +287,7 @@
                                     android:layout_width="40dp"
                                     android:layout_height="40dp"
                                     android:src="@drawable/ic_addd"
-                                    app:tint="?attr/colorPrimary"
+                                    app:tint="@color/vibrant_green"
                                     android:alpha="0.9" />
 
                                 <TextView
@@ -295,7 +295,7 @@
                                     android:layout_height="wrap_content"
                                     android:text="@string/add_room"
                                     android:textSize="13sp"
-                                    android:textColor="@android:color/black"
+                                    android:textColor="@color/text_dark_warm"
                                     android:layout_marginTop="10dp"
                                     android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
@@ -310,9 +310,10 @@
                             android:layout_margin="6dp"
                             android:layout_rowWeight="1"
                             app:cardCornerRadius="20dp"
-                            app:strokeColor="?attr/colorPrimary"
-                            app:strokeWidth="0dp"
-                            app:cardElevation="2dp"
+                            app:strokeColor="@color/vibrant_purple"
+                            app:strokeWidth="1dp"
+                            app:cardBackgroundColor="@color/card_language"
+                            app:cardElevation="4dp"
                             android:foreground="?attr/selectableItemBackgroundBorderless"
                             android:stateListAnimator="@animator/card_state_animator">
 
@@ -327,7 +328,7 @@
                                     android:layout_width="40dp"
                                     android:layout_height="40dp"
                                     android:src="@drawable/ic_state"
-                                    app:tint="?attr/colorPrimary"
+                                    app:tint="@color/vibrant_coral"
                                     android:alpha="0.9" />
 
                                 <TextView
@@ -335,7 +336,7 @@
                                     android:layout_height="wrap_content"
                                     android:text="@string/language"
                                     android:textSize="13sp"
-                                    android:textColor="@android:color/black"
+                                    android:textColor="@color/text_dark_warm"
                                     android:layout_marginTop="10dp"
                                     android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
@@ -348,34 +349,40 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
-                        <!-- UDSM Item -->
+                        <!-- UDSM Item with Colorful Background -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginBottom="12dp"
                             app:cardCornerRadius="16dp"
-                            app:strokeColor="@color/text_secondary"
-                            app:strokeWidth="0.5dp"
-                            app:cardElevation="1dp"
+                            app:strokeColor="@color/vibrant_teal"
+                            app:strokeWidth="1dp"
+                            app:cardBackgroundColor="@color/card_udsm"
+                            app:cardElevation="3dp"
                             android:foreground="?attr/selectableItemBackground">
+
+                            <!-- Add your UDSM content here -->
 
                         </com.google.android.material.card.MaterialCardView>
 
-                        <!-- Bus Office Item -->
+                        <!-- Bus Office Item with Colorful Background -->
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             app:cardCornerRadius="16dp"
-                            app:strokeColor="@color/text_secondary"
-                            app:strokeWidth="0.5dp"
-                            app:cardElevation="1dp"
+                            app:strokeColor="@color/vibrant_orange"
+                            app:strokeWidth="1dp"
+                            app:cardBackgroundColor="@color/card_bus"
+                            app:cardElevation="3dp"
                             android:foreground="?attr/selectableItemBackground">
+
+                            <!-- Add your Bus Office content here -->
 
                         </com.google.android.material.card.MaterialCardView>
 
                     </LinearLayout>
 
-                    <!-- Language Selection (Hidden by default) -->
+                    <!-- Language Selection with Colorful Design -->
                     <LinearLayout
                         android:id="@+id/language_selection"
                         android:layout_width="match_parent"
@@ -383,7 +390,7 @@
                         android:orientation="horizontal"
                         android:layout_marginTop="32dp"
                         android:padding="16dp"
-                        android:background="@drawable/language_selection_background"
+                        android:background="@drawable/language_selection_background_gradient"
                         android:visibility="gone"
                         android:gravity="center">
 
@@ -393,20 +400,22 @@
                             android:layout_height="wrap_content"
                             android:text="@string/english"
                             android:layout_marginEnd="12dp"
-                            app:chipBackgroundColor="@color/chip_background"
+                            android:textColor="@color/text_dark_warm"
+                            app:chipBackgroundColor="@color/chip_background_english"
                             app:checkedIcon="@drawable/ic_room_available"
                             app:chipIcon="@drawable/ic_english"
-                            app:chipIconTint="?attr/colorPrimary" />
+                            app:chipIconTint="@color/vibrant_teal" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chip_swahili"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/swahili"
-                            app:chipBackgroundColor="@color/chip_background"
+                            android:textColor="@color/text_dark_warm"
+                            app:chipBackgroundColor="@color/chip_background_swahili"
                             app:checkedIcon="@drawable/ic_room_occupied"
                             app:chipIcon="@drawable/ic_swahili"
-                            app:chipIconTint="?attr/colorPrimary" />
+                            app:chipIconTint="@color/vibrant_orange" />
                     </LinearLayout>
 
                 </LinearLayout>
@@ -414,14 +423,14 @@
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>
 
-    <!-- Fixed Bottom Navigation Section -->
+    <!-- Fixed Bottom Navigation with Colorful Design -->
     <LinearLayout
         android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
         android:layout_height="70dp"
         android:layout_gravity="bottom"
         android:orientation="horizontal"
-        android:background="@color/white"
+        android:background="@color/bottom_nav_bg"
         android:elevation="16dp"
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
@@ -443,14 +452,14 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/home"
-                app:tint="@color/black" />
+                app:tint="@color/vibrant_purple" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/home"
                 android:textSize="12sp"
-                android:textColor="@color/black"
+                android:textColor="@color/vibrant_purple"
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
@@ -470,14 +479,14 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_menu"
-                app:tint="@color/black" />
+                app:tint="@color/vibrant_teal" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/menu"
                 android:textSize="12sp"
-                android:textColor="@color/black"
+                android:textColor="@color/vibrant_teal"
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
@@ -497,26 +506,26 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_profile"
-                app:tint="@color/black" />
+                app:tint="@color/vibrant_coral" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/profile"
                 android:textSize="12sp"
-                android:textColor="@color/black"
+                android:textColor="@color/vibrant_coral"
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Loading Overlay -->
+    <!-- Loading Overlay with Colorful Tint -->
     <View
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone"
-        android:background="#80000000" />
+        android:background="@color/overlay_colorful" />
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/progressIndicator"
@@ -525,7 +534,8 @@
         android:visibility="gone"
         android:indeterminate="true"
         android:layout_gravity="center"
-        app:indicatorColor="?attr/colorPrimary"
+        app:indicatorColor="@color/vibrant_teal"
+        app:trackColor="@color/vibrant_coral_light"
         app:trackThickness="4dp"
         app:indicatorSize="48dp" />
 
