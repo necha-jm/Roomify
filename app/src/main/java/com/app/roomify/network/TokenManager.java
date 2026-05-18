@@ -32,6 +32,8 @@ public class TokenManager {
         return instance;
     }
 
+
+
     public static synchronized TokenManager getInstance() {
         if (instance == null) {
             throw new IllegalStateException("TokenManager not initialized. Call getInstance(Context) first.");

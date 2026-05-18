@@ -47,11 +47,11 @@ public class DashboardActivity extends AppCompatActivity {
     private User currentUser;
     private Long currentUserId = null;
 
-    private BookingResponseAdapter bookingAdapter;  // CHANGED: Use BookingResponseAdapter
+    private BookingResponseAdapter bookingAdapter;
     private RoomAdapter recommendationAdapter;
 
     private ArrayList<Room> rooms;
-    private ArrayList<BookingResponse> bookings;  // CHANGED: Use BookingResponse instead of BookingRequest
+    private ArrayList<BookingResponse> bookings;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,7 +95,6 @@ public class DashboardActivity extends AppCompatActivity {
 
         recommendationAdapter = new RoomAdapter(rooms);
 
-        // CHANGED: Use BookingResponseAdapter with proper callback
         bookingAdapter = new BookingResponseAdapter(bookings, (booking, action) -> {
             switch (action) {
                 case "accept":
@@ -195,7 +194,6 @@ public class DashboardActivity extends AppCompatActivity {
             return;
         }
 
-        // CHANGED: Use BookingResponse instead of BookingRequest
         Call<ApiResponse<List<BookingResponse>>> bookingsCall = apiInterface.getUserBookings(currentUserId);
         bookingsCall.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
             @Override
@@ -304,7 +302,6 @@ public class DashboardActivity extends AppCompatActivity {
 
         showLoading(true);
 
-        // CHANGED: Use BookingResponse
         Call<ApiResponse<List<BookingResponse>>> call = apiInterface.getUserBookings(currentUserId);
         call.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
             @Override
@@ -339,9 +336,11 @@ public class DashboardActivity extends AppCompatActivity {
         });
     }
 
+    // ==================== ONLY THIS METHOD IS MODIFIED ====================
     private void loadRecommendations() {
         showLoading(true);
 
+        // Use unwrapped response
         Call<List<Room>> call = apiInterface.getAllRooms();
         call.enqueue(new Callback<List<Room>>() {
             @Override
@@ -350,14 +349,11 @@ public class DashboardActivity extends AppCompatActivity {
 
                 if (response.isSuccessful() && response.body() != null) {
                     List<Room> allRooms = response.body();
-                    if (!allRooms.isEmpty()) {
-                        // Get first 5 rooms as recommendations
+                    if (allRooms != null && !allRooms.isEmpty()) {
                         List<Room> recommendedRooms = allRooms.stream()
                                 .limit(5)
                                 .collect(Collectors.toList());
                         recommendationAdapter.setRooms(recommendedRooms);
-                    } else {
-                        recommendationAdapter.setRooms(new ArrayList<>());
                     }
                 } else {
                     Log.e(TAG, "Error loading recommendations");
@@ -373,8 +369,8 @@ public class DashboardActivity extends AppCompatActivity {
             }
         });
     }
+    // ==================== END OF MODIFIED METHOD ====================
 
-    // CHANGED: All handlers now use BookingResponse instead of BookingRequest
     private void handleAcceptBooking(BookingResponse booking) {
         if (booking.getId() == null) {
             Toast.makeText(this, "Invalid booking", Toast.LENGTH_SHORT).show();

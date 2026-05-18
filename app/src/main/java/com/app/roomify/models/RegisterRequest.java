@@ -22,11 +22,21 @@ public class RegisterRequest {
     @SerializedName("phone")
     private String phone;
 
+    // NEW FIELDS FOR DALALI (AGENT)
+    @SerializedName("licenseNumber")
+    private String licenseNumber;
+
+    @SerializedName("locationArea")
+    private String locationArea;
+
+    @SerializedName("verificationStatus")
+    private String verificationStatus;  // pending, verified, rejected
+
     // Default constructor (required for Gson)
     public RegisterRequest() {
     }
 
-    // Getters and Setters
+    // ========== EXISTING GETTERS & SETTERS (UNCHANGED) ==========
     public String getName() {
         return name;
     }
@@ -73,5 +83,45 @@ public class RegisterRequest {
 
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+
+    // ========== NEW GETTERS & SETTERS FOR DALALI ==========
+    public String getLicenseNumber() {
+        return licenseNumber;
+    }
+
+    public void setLicenseNumber(String licenseNumber) {
+        this.licenseNumber = licenseNumber;
+    }
+
+    public String getLocationArea() {
+        return locationArea;
+    }
+
+    public void setLocationArea(String locationArea) {
+        this.locationArea = locationArea;
+    }
+
+    public String getVerificationStatus() {
+        return verificationStatus;
+    }
+
+    public void setVerificationStatus(String verificationStatus) {
+        this.verificationStatus = verificationStatus;
+    }
+
+    // ========== HELPER METHOD TO CHECK IF DALALI ==========
+    public boolean isDalali() {
+        return "dalali".equalsIgnoreCase(role);
+    }
+
+    // ========== HELPER METHOD TO CHECK IF OWNER ==========
+    public boolean isOwner() {
+        return "owner".equalsIgnoreCase(role);
+    }
+
+    // ========== HELPER METHOD TO CHECK IF TENANT ==========
+    public boolean isTenant() {
+        return "tenant".equalsIgnoreCase(role);
     }
 }

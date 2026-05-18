@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Main Section -->
+    <group android:checkableBehavior="single">
+
+        <item
+            android:id="@+id/nav_dashboard"
+            android:icon="@drawable/ic_dashboard"
+            android:title="Dashboard"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_add_listing"
+            android:icon="@drawable/ic_add_property"
+            android:title="Add New Listing"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_my_listings"
+            android:icon="@drawable/ic_my_listings"
+            android:title="My Listings"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_messages"
+            android:icon="@drawable/ic_messages"
+            android:title="Messages"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_earnings"
+            android:icon="@drawable/ic_earnings"
+            android:title="Earnings"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_profile"
+            android:icon="@drawable/ic_profile"
+            android:title="My Profile"
+            app:showAsAction="ifRoom" />
+
+    </group>
+
+    <!-- Divider -->
+    <item
+        android:id="@+id/nav_divider"
+        android:title=""
+        android:enabled="false"
+        app:showAsAction="never" />
+
+    <!-- Bottom Section -->
+    <group>
+
+        <item
+            android:id="@+id/nav_settings"
+            android:icon="@drawable/ic_settings"
+            android:title="Settings"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_help"
+            android:icon="@drawable/ic_help"
+            android:title="Help and Support"
+            app:showAsAction="ifRoom" />
+
+        <item
+            android:id="@+id/nav_logout"
+            android:icon="@drawable/ic_logout"
+            android:title="Logout"
+            app:showAsAction="ifRoom" />
+
+    </group>
+
+</menu>

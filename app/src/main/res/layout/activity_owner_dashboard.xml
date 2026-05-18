@@ -314,7 +314,7 @@
                         android:padding="12dp">
 
                         <ImageView
-                            android:layout_width="48dp"
+                            android:layout_width="42dp"
                             android:layout_height="48dp"
                             android:src="@drawable/ic_ic_properties"
                             app:tint="@android:color/white" />
@@ -383,6 +383,7 @@
                     app:cardBackgroundColor="@color/owner_card_analytics">
 
                     <LinearLayout
+                        android:id="@+id/analytics"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:orientation="vertical"

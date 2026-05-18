@@ -12,7 +12,20 @@
           "package_name": "com.app.roomify"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1041914574744-nmunfiuet71ipf8lgah37oqi2fnkvkpl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.app.roomify",
+            "certificate_hash": "f742d432936ed9e056ef503976370007fe432e64"
+          }
+        },
+        {
+          "client_id": "1041914574744-evaa3p91lu43jr5crr42esqrivkha66m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBheNnn6osfwMStuzJNK_8rbxJ9YIWDGtg"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1041914574744-evaa3p91lu43jr5crr42esqrivkha66m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

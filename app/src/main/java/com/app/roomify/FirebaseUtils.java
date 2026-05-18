@@ -124,8 +124,7 @@ public class FirebaseUtils {
         }
     }
 
-    // ==================== UPDATED SAVE ROOM METHOD ====================
-    // Save a room to backend - FIXED VERSION
+    // Save a room to backend
     public static void saveRoom(Room room, SuccessCallback callback) {
         if (room == null || appContext == null) {
             if (callback != null) callback.onSuccess(false, "Room is null");
@@ -178,36 +177,6 @@ public class FirebaseUtils {
         });
     }
 
-    // ==================== LEGACY SAVE ROOM (DEPRECATED - FOR BACKWARD COMPATIBILITY) ====================
-    @Deprecated
-    public static void saveRoomLegacy(Room room, SuccessCallback callback) {
-        if (room == null || appContext == null) {
-            if (callback != null) callback.onSuccess(false, "Room is null");
-            return;
-        }
-
-        TokenManager tokenManager = new TokenManager(appContext);
-        APIInterface apiInterface = APIClient.getClient().create(APIInterface.class);
-
-        Call<Room> call = apiInterface.createRoomLegacy(room); // You would need to add this to APIInterface
-        call.enqueue(new Callback<Room>() {
-            @Override
-            public void onResponse(Call<Room> call, Response<Room> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    if (callback != null) callback.onSuccess(true, "Room saved successfully");
-                } else {
-                    if (callback != null) callback.onSuccess(false, "Failed to save room");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<Room> call, Throwable t) {
-                Log.e(TAG, "Error saving room: " + t.getMessage());
-                if (callback != null) callback.onSuccess(false, t.getMessage());
-            }
-        });
-    }
-
     // Get room by ID from backend
     public static void getRoom(String roomId, RoomCallback callback) {
         if (roomId == null || appContext == null) {
@@ -242,6 +211,7 @@ public class FirebaseUtils {
         }
     }
 
+    // ==================== ONLY THIS METHOD IS MODIFIED ====================
     // Get all rooms from backend
     public static void getAllRooms(RoomsCallback callback) {
         if (appContext == null) {
@@ -251,6 +221,7 @@ public class FirebaseUtils {
 
         APIInterface apiInterface = APIClient.getClient().create(APIInterface.class);
 
+        // Use unwrapped response
         Call<List<Room>> call = apiInterface.getAllRooms();
         call.enqueue(new Callback<List<Room>>() {
             @Override
@@ -269,6 +240,7 @@ public class FirebaseUtils {
             }
         });
     }
+    // ==================== END OF MODIFIED METHOD ====================
 
     // Get rooms by owner ID
     public static void getRoomsByOwner(String ownerId, RoomsCallback callback) {

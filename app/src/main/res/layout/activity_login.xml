@@ -120,7 +120,7 @@
                         android:layout_marginTop="16dp"
                         android:layout_marginBottom="12dp"/>
 
-                    <!-- Role Selection Chips -->
+                    <!-- Role Selection Chips - UPDATED with THREE options -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -133,7 +133,7 @@
                             style="@style/Widget.MaterialComponents.Chip.Choice"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="16dp"
+                            android:layout_marginEnd="8dp"
                             android:text="Tenant"
                             android:textSize="14sp"
                             app:chipBackgroundColor="@color/chip_background"
@@ -147,10 +147,25 @@
                             style="@style/Widget.MaterialComponents.Chip.Choice"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
                             android:text="Owner"
                             android:textSize="14sp"
                             app:chipBackgroundColor="@color/chip_background"
                             app:chipIcon="@drawable/ic_business"
+                            app:chipIconTint="?attr/colorPrimary"
+                            app:checkedIcon="@drawable/ic_check_circle"
+                            app:checkedIconTint="@color/primary_green" />
+
+                        <!-- NEW: Dalali (Agent) Chip -->
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chipDalaliLogin"
+                            style="@style/Widget.MaterialComponents.Chip.Choice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Dalali"
+                            android:textSize="14sp"
+                            app:chipBackgroundColor="@color/chip_background"
+                            app:chipIcon="@drawable/ic_agent"
                             app:chipIconTint="?attr/colorPrimary"
                             app:checkedIcon="@drawable/ic_check_circle"
                             app:checkedIconTint="@color/primary_green" />
@@ -271,7 +286,7 @@
                     <com.google.android.gms.common.SignInButton
                         android:id="@+id/Google"
                         android:layout_width="match_parent"
-                        android:layout_height="48dp"
+                        android:layout_height="70dp"
                         android:layout_marginTop="12dp"
                         android:layout_marginBottom="8dp"
                         android:padding="8dp" />
@@ -284,7 +299,7 @@
 
     </ScrollView>
 
-    <!-- Loading Overlay - Add this at the very end -->
+    <!-- Loading Overlay -->
     <View
         android:id="@+id/loadingOverlay"
         android:layout_width="match_parent"

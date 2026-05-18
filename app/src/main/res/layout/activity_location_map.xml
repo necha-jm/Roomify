@@ -275,30 +275,7 @@
                             android:foreground="?attr/selectableItemBackgroundBorderless"
                             android:stateListAnimator="@animator/card_state_animator">
 
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:orientation="vertical"
-                                android:gravity="center"
-                                android:padding="12dp">
 
-                                <ImageView
-                                    android:id="@+id/addRoom"
-                                    android:layout_width="40dp"
-                                    android:layout_height="40dp"
-                                    android:src="@drawable/ic_addd"
-                                    app:tint="@color/vibrant_green"
-                                    android:alpha="0.9" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/add_room"
-                                    android:textSize="13sp"
-                                    android:textColor="@color/text_dark_warm"
-                                    android:layout_marginTop="10dp"
-                                    android:fontFamily="sans-serif-medium" />
-                            </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
                         <!-- Language Card -->
@@ -427,7 +404,7 @@
     <LinearLayout
         android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
-        android:layout_height="70dp"
+        android:layout_height="60dp"
         android:layout_gravity="bottom"
         android:orientation="horizontal"
         android:background="@color/bottom_nav_bg"

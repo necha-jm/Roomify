@@ -156,7 +156,7 @@ public class DatabaseHelper {
             return;
         }
 
-        Call<Room> call = apiInterface.createRoomLegacy(room); // You would need to add this to APIInterface
+        Call<Room> call = apiInterface.createRoomLegacy(room);
         call.enqueue(new Callback<Room>() {
             @Override
             public void onResponse(Call<Room> call, Response<Room> response) {
@@ -195,14 +195,18 @@ public class DatabaseHelper {
         }
     }
 
+    // ==================== ONLY THIS METHOD IS MODIFIED ====================
     public void getAllRooms(RoomsCallback callback) {
+        // Use unwrapped response
         Call<List<Room>> call = apiInterface.getAllRooms();
         call.enqueue(new Callback<List<Room>>() {
             @Override
             public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     if (callback != null) callback.onCallback(response.body());
-                } else if (callback != null) callback.onCallback(null);
+                } else {
+                    if (callback != null) callback.onCallback(null);
+                }
             }
             @Override
             public void onFailure(Call<List<Room>> call, Throwable t) {
@@ -211,6 +215,7 @@ public class DatabaseHelper {
             }
         });
     }
+    // ==================== END OF MODIFIED METHOD ====================
 
     public void getRoomsByOwner(String ownerId, RoomsCallback callback) {
         try {

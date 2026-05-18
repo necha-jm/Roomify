@@ -163,7 +163,6 @@ public class ProfileActivity extends AppCompatActivity {
                 profileRole.setText(displayRole);
                 profileRole.setVisibility(View.VISIBLE);
 
-                // Change role badge color based on role
                 if ("owner".equalsIgnoreCase(role)) {
                     profileRole.setBackgroundResource(R.drawable.role_badge_owner);
                 } else {
@@ -174,15 +173,24 @@ public class ProfileActivity extends AppCompatActivity {
             }
         }
 
-        // Member since - Since User model doesn't have createdAt, use a default or hide
+        // Member since
         if (profileMemberSince != null) {
-            // You can add a createdAt field to User model or use a default
             profileMemberSince.setVisibility(View.GONE);
         }
 
-        // Load profile image - Using default for now
+        // FIXED: Load saved image instead of always default
         if (profileImage != null) {
-            profileImage.setImageResource(R.drawable.ic_profile);
+            String savedImage = getSharedPreferences("profile", MODE_PRIVATE)
+                    .getString("image_uri", null);
+
+            if (savedImage != null) {
+                Glide.with(this)
+                        .load(Uri.parse(savedImage))
+                        .placeholder(R.drawable.ic_profile)
+                        .into(profileImage);
+            } else {
+                profileImage.setImageResource(R.drawable.ic_profile);
+            }
         }
     }
 
@@ -324,11 +332,22 @@ public class ProfileActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
         if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri imageUri = data.getData();
-            profileImage.setImageURI(imageUri);
 
-            // TODO: Upload profile image to server
+            // SAVE the image URI
+            getSharedPreferences("profile", MODE_PRIVATE)
+                    .edit()
+                    .putString("image_uri", imageUri.toString())
+                    .apply();
+
+            // Use Glide (better than setImageURI)
+            Glide.with(this)
+                    .load(imageUri)
+                    .placeholder(R.drawable.ic_profile)
+                    .into(profileImage);
+
             Toast.makeText(this, "Profile image updated locally", Toast.LENGTH_SHORT).show();
         }
     }

@@ -88,12 +88,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/appName">
 
-        <ImageView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:src="@drawable/ic_home_smart"
-            android:alpha="0.7"
-            android:layout_marginEnd="8dp" />
+
 
         <TextView
             android:id="@+id/tagline"
@@ -118,13 +113,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:indeterminateTint="@color/progress_color"
-            android:alpha="0.6" />
 
         <TextView
             android:layout_width="wrap_content"

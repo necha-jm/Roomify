@@ -316,7 +316,7 @@
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                         app:boxStrokeColor="@color/primary"
                         app:hintTextColor="@color/primary"
-                        app:prefixText="$">
+                        app:prefixText="TZ">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etPrice"
@@ -506,8 +506,7 @@
                     android:layout_marginBottom="12dp"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                     app:boxStrokeColor="@color/primary"
-                    app:hintTextColor="@color/primary"
-                    app:prefixText="+255">
+                    app:hintTextColor="@color/primary">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etContactPhone"

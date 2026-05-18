@@ -9,6 +9,7 @@ import com.app.roomify.Room;
 import com.app.roomify.RoomCreateRequest;
 import com.app.roomify.database.RoomEntity;
 import com.app.roomify.database.RoomifyDatabase;
+import com.app.roomify.models.ApiResponse;
 import com.app.roomify.network.APIClient;
 import com.app.roomify.network.APIInterface;
 import com.app.roomify.network.TokenManager;
@@ -98,33 +99,31 @@ public class OfflineSyncWorker extends Worker {
         fetchLatestFromServer(db, tokenManager);
     }
 
+    // ONLY THIS METHOD IS MODIFIED - fetchLatestFromServer
     private void fetchLatestFromServer(RoomifyDatabase db, TokenManager tokenManager) {
         try {
             APIClient.init(tokenManager);
             APIInterface apiInterface = APIClient.getClient().create(APIInterface.class);
 
+            // Use unwrapped response
             Call<List<Room>> call = apiInterface.getAllRooms();
             Response<List<Room>> response = call.execute();
 
             if (response.isSuccessful() && response.body() != null) {
                 List<Room> serverRooms = response.body();
 
-                // Clear existing rooms
-                db.roomDao().deleteAllRooms();
-
-                for (Room room : serverRooms) {
-                    RoomEntity entity = OfflineSyncManager.convertToEntity(room);
-                    entity.setSynced(true);
-                    entity.setServerId(room.getId()); // Store the server ID
-                    db.roomDao().insertRoom(entity);
+                if (serverRooms != null && !serverRooms.isEmpty()) {
+                    db.roomDao().deleteAllRooms();
+                    for (Room room : serverRooms) {
+                        RoomEntity entity = OfflineSyncManager.convertToEntity(room);
+                        entity.setSynced(true);
+                        entity.setServerId(room.getId());
+                        db.roomDao().insertRoom(entity);
+                    }
+                    Log.d(TAG, "Fetched " + serverRooms.size() + " rooms from server");
                 }
-
-                Log.d(TAG, "Fetched " + serverRooms.size() + " rooms from server");
             } else {
                 Log.e(TAG, "Failed to fetch rooms from server. Response code: " + response.code());
-                if (response.errorBody() != null) {
-                    Log.e(TAG, "Error body: " + response.errorBody().string());
-                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to fetch latest data from server", e);

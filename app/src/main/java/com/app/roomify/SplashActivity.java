@@ -65,7 +65,7 @@ public class SplashActivity extends AppCompatActivity {
                 finish();
             }
 
-        }, 3000); // 3 seconds is enough
+        }, 5000); // 3 seconds is enough
     }
 
     private void validateTokenAndNavigate() {

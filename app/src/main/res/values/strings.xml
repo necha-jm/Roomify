@@ -67,7 +67,7 @@
     <string name="message">Message</string>
     <string name="book_now_request_visit">Book Now / Request Visit</string>
     <string name="john_doe">John Doe</string>
-    <string name="search_location_or_room">Search location or room</string>
+    <string name="search_location_or_room">Search location</string>
     <string name="todo">TODO</string>
     <string name="discover_places">Discover Places</string>
 
@@ -177,4 +177,6 @@
     <string name="menu">Menu</string>
     <string name="profile">Profile</string>
     <string name="document_name">Document Name</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
 </resources>

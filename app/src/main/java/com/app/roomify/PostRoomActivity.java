@@ -116,7 +116,34 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     private Long currentUserId;
 
     // Property types
-    private String[] propertyTypes = {"Apartment", "Single Room", "Studio", "House", "Shared Room", "Commercial"};
+    private String[] propertyTypes = {
+            // Residential - Shared
+            "Single Room",
+            "Shared Room",
+            "Double Room",
+            "Studio",
+            "Dormitory",
+            "Co-living Space",
+            "Basement",
+            "Garden Room",
+            "Annex",
+
+            // Residential - Whole Units
+            "Apartment",
+            "House",
+            "Penthouse",
+            "Villa",
+            "Townhouse",
+            "Cabin",
+            "Guest House",
+            "Serviced Apartment",
+
+            // Commercial
+            "Commercial",
+            "Office Space",
+            "Retail Space",
+            "Warehouse"
+    };
 
     // Amenities list
     private String[] amenitiesList = {"WiFi", "Parking", "AC", "Security", "Water", "Electricity",
@@ -413,22 +440,55 @@ public class PostRoomActivity extends AppCompatActivity implements OnMapReadyCal
     }
 
     private void pickImages() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("image/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        startActivityForResult(Intent.createChooser(intent, "Select Images"), IMAGE_PICK_REQUEST_CODE);
+        try {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("image/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+            startActivityForResult(
+                    Intent.createChooser(intent, "Select Images"),
+                    IMAGE_PICK_REQUEST_CODE
+            );
+
+        } catch (Exception e) {
+            Log.e("FilePicker", "Error opening image picker: " + e.getMessage());
+            Toast.makeText(this, "Unable to open image picker", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void pickVideo() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("video/*");
-        startActivityForResult(intent, VIDEO_PICK_REQUEST_CODE);
+        try {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("video/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+            startActivityForResult(
+                    Intent.createChooser(intent, "Select Video"),
+                    VIDEO_PICK_REQUEST_CODE
+            );
+
+        } catch (Exception e) {
+            Log.e("FilePicker", "Error opening video picker: " + e.getMessage());
+            Toast.makeText(this, "Unable to open video picker", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void pickContract() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("application/pdf");
-        startActivityForResult(intent, CONTRACT_PICK_REQUEST_CODE);
+        try {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("application/pdf");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+            startActivityForResult(
+                    Intent.createChooser(intent, "Select PDF Contract"),
+                    CONTRACT_PICK_REQUEST_CODE
+            );
+
+        } catch (Exception e) {
+            Log.e("FilePicker", "Error opening PDF picker: " + e.getMessage());
+            Toast.makeText(this, "Unable to open PDF picker", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override

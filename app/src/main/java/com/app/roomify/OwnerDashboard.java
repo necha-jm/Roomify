@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,6 +54,8 @@ public class OwnerDashboard extends AppCompatActivity {
     private PendingRequestAdapter pendingRequestAdapter;
     private PropertyAdapter propertyAdapter;
 
+    private LinearLayout analytics;
+
     private List<Room> allProperties;
     private List<BookingResponse> allPendingRequests;
 
@@ -78,6 +81,7 @@ public class OwnerDashboard extends AppCompatActivity {
         tvThisMonthEarnings = findViewById(R.id.tvThisMonthEarnings);
         tvLastMonthEarnings = findViewById(R.id.tvLastMonthEarnings);
         tvViewAllRequests = findViewById(R.id.tvViewAllRequests);
+        analytics = findViewById(R.id.analytics);
 
         cardAddProperty = findViewById(R.id.cardAddProperty);
         cardMyProperties = findViewById(R.id.cardMyProperties);
@@ -115,7 +119,21 @@ public class OwnerDashboard extends AppCompatActivity {
                     }
                 });
 
-        propertyAdapter = new PropertyAdapter(new ArrayList<>(), this::onPropertyClick);
+        // FIXED: PropertyAdapter constructor - removed invalid method reference
+        propertyAdapter = new PropertyAdapter(new ArrayList<>(),
+                new PropertyAdapter.OnPropertyClickListener() {
+                    @Override
+                    public void onPropertyClick(Room room) {
+                        onPropertyClick(room);
+                    }
+
+                    @Override
+                    public void onMenuClick(Room room, View view) {
+                        // Handle menu click if needed
+                    }
+                },
+                "owner"
+        );
 
         rvPendingRequests.setAdapter(pendingRequestAdapter);
         rvProperties.setAdapter(propertyAdapter);
@@ -197,9 +215,9 @@ public class OwnerDashboard extends AppCompatActivity {
         if (bookings == null || bookings.isEmpty()) {
             runOnUiThread(() -> {
                 tvTotalBookings.setText("0");
-                tvTotalEarnings.setText("$0");
-                tvThisMonthEarnings.setText("$0");
-                tvLastMonthEarnings.setText("$0");
+                tvTotalEarnings.setText("TZS 0");
+                tvThisMonthEarnings.setText("TZS 0");
+                tvLastMonthEarnings.setText("TZS 0");
                 showLoading(false);
             });
             return;
@@ -220,9 +238,9 @@ public class OwnerDashboard extends AppCompatActivity {
 
         runOnUiThread(() -> {
             tvTotalBookings.setText(String.valueOf(finalTotalBookings));
-            tvTotalEarnings.setText(String.format("$%.2f", finalTotalEarnings));
-            tvThisMonthEarnings.setText("$0.00");
-            tvLastMonthEarnings.setText("$0.00");
+            tvTotalEarnings.setText("TZS " + String.format("%,.0f", finalTotalEarnings));
+            tvThisMonthEarnings.setText("TZS 0");
+            tvLastMonthEarnings.setText("TZS 0");
             showLoading(false);
         });
     }
@@ -254,6 +272,11 @@ public class OwnerDashboard extends AppCompatActivity {
 
         ivSettings.setOnClickListener(v -> {
             Toast.makeText(this, "Settings coming soon", Toast.LENGTH_SHORT).show();
+        });
+
+        analytics.setOnClickListener(v -> {
+            Intent intent = new Intent(this, AnalyticsActivity.class);
+            startActivity(intent);
         });
 
         tvViewAllRequests.setOnClickListener(v -> {
@@ -313,7 +336,8 @@ public class OwnerDashboard extends AppCompatActivity {
                         showLoading(false);
 
                         if (allPendingRequests.isEmpty()) {
-                            Toast.makeText(OwnerDashboard.this, "No pending requests", Toast.LENGTH_SHORT).show();
+                            // Don't show toast, just log
+                            Log.d(TAG, "No pending requests");
                         }
                     });
                 } else {
@@ -344,7 +368,7 @@ public class OwnerDashboard extends AppCompatActivity {
 
                 if (response.isSuccessful() && response.body() != null) {
                     List<Room> properties = response.body();
-                    propertyAdapter.setRooms(properties);
+                    propertyAdapter.updateProperties(properties); // FIXED: Use updateProperties instead of setRooms
 
                     if (properties.isEmpty()) {
                         Toast.makeText(OwnerDashboard.this, "No properties found. Add your first property!", Toast.LENGTH_LONG).show();

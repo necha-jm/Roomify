@@ -14,14 +14,54 @@
         android:orientation="horizontal"
         android:padding="12dp">
 
-        <!-- Property Image -->
-        <ImageView
-            android:id="@+id/ivPropertyImage"
+        <!-- Property Image with Status Badge -->
+        <FrameLayout
             android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:scaleType="centerCrop"
-            android:src="@drawable/ic_apartment"
-            app:cornerRadius="12dp" />
+            android:layout_height="80dp">
+
+            <ImageView
+                android:id="@+id/ivPropertyImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_apartment"
+                app:cornerRadius="12dp" />
+
+            <!-- Status Badge Overlay -->
+            <TextView
+                android:id="@+id/tvStatusBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Available"
+                android:textSize="10sp"
+                android:textColor="@android:color/white"
+                android:background="@drawable/bg_status_pill_small"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="4dp"
+                android:visibility="gone" />
+
+            <!-- Featured Badge -->
+            <TextView
+                android:id="@+id/tvFeaturedBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⭐ Featured"
+                android:textSize="9sp"
+                android:textColor="@android:color/white"
+                android:background="@color/gold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:layout_gravity="top|start"
+                android:layout_margin="4dp"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
         <!-- Property Details -->
         <LinearLayout
@@ -38,7 +78,9 @@
                 android:text="Modern Studio"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="@color/text_dark" />
+                android:textColor="@color/text_dark"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/tvLocation"
@@ -46,14 +88,18 @@
                 android:layout_height="wrap_content"
                 android:text="Dar es Salaam, Tanzania"
                 android:textSize="12sp"
-                android:textColor="@color/text_secondary"
-                android:layout_marginTop="4dp" />
+                android:textColor="@color/text_gray"
+                android:layout_marginTop="2dp"
+                android:drawableStart="@drawable/ic_location_small"
+                android:drawablePadding="4dp"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="6dp">
 
                 <TextView
                     android:id="@+id/tvPrice"
@@ -62,21 +108,47 @@
                     android:text="$450/month"
                     android:textSize="14sp"
                     android:textStyle="bold"
-                    android:textColor="@color/primary" />
+                    android:textColor="@color/primary_teal" />
 
                 <View
                     android:layout_width="1dp"
-                    android:layout_height="16dp"
+                    android:layout_height="14dp"
                     android:background="@color/gray_300"
-                    android:layout_marginHorizontal="12dp" />
+                    android:layout_marginHorizontal="8dp" />
 
                 <TextView
-                    android:id="@+id/tvBookingsCount"
+                    android:id="@+id/tvBookingCount"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="3 bookings"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_secondary" />
+                    android:text="3 interested"
+                    android:textSize="11sp"
+                    android:textColor="@color/text_gray" />
+
+            </LinearLayout>
+
+            <!-- Dalali Commission Row -->
+            <LinearLayout
+                android:id="@+id/llCommission"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_money_small"
+                    app:tint="@color/warning_orange" />
+
+                <TextView
+                    android:id="@+id/tvCommission"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Commission: TZS 10,000"
+                    android:textSize="11sp"
+                    android:textColor="@color/warning_orange"
+                    android:layout_marginStart="4dp" />
 
             </LinearLayout>
 
@@ -88,8 +160,9 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:padding="8dp"
+            android:src="@drawable/ic_more_vert"
             android:background="?attr/selectableItemBackground"
-            app:tint="@color/text_secondary" />
+            app:tint="@color/text_gray" />
 
     </LinearLayout>
 

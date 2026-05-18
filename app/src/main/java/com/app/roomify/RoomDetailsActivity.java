@@ -301,73 +301,136 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
     }
 
+
     // ==================== DATA LOADING METHODS ====================
 
+// ==================== DATA LOADING METHODS ====================
+
+// ==================== DATA LOADING METHODS ====================
+
     private void loadRoomDetails() {
-        apiInterface.getRoomById(roomId).enqueue(new Callback<Room>() {
+        // First get all rooms and find the one we need (workaround for broken getRoomById)
+        Call<List<Room>> call = apiInterface.getAllRooms();
+        call.enqueue(new Callback<List<Room>>() {
             @Override
-            public void onResponse(Call<Room> call, Response<Room> response) {
-                if (!response.isSuccessful() || response.body() == null) {
-                    Toast.makeText(RoomDetailsActivity.this, "Failed to load room", Toast.LENGTH_SHORT).show();
+            public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    List<Room> rooms = response.body();
+
+                    // Find the room with matching ID
+                    currentRoom = null;
+                    for (Room room : rooms) {
+                        if (room.getId() == roomId) {
+                            currentRoom = room;
+                            break;
+                        }
+                    }
+
+                    if (currentRoom == null) {
+                        Toast.makeText(RoomDetailsActivity.this, "Room not found", Toast.LENGTH_SHORT).show();
+                        if (btnBookNow != null) {
+                            btnBookNow.setEnabled(false);
+                            btnBookNow.setText("Error Loading");
+                        }
+                        finish();
+                        return;
+                    }
+
+                    isRoomLoaded = true;
+                    roomLat = currentRoom.getLatitude();
+                    roomLng = currentRoom.getLongitude();
+
+                    // ==================== FIXED: Base URL without trailing slash ====================
+                    String baseUrl = "https://roomify-backend.fly.dev";
+
+                    // ==================== FIXED: Extract VIDEO URL ====================
+                    String rawVideoUrl = currentRoom.getVideoUrl();
+                    if (rawVideoUrl != null && !rawVideoUrl.isEmpty()) {
+                        if (rawVideoUrl.startsWith("http://") || rawVideoUrl.startsWith("https://")) {
+                            videoUrl = rawVideoUrl;
+                        } else if (rawVideoUrl.startsWith("/")) {
+                            videoUrl = baseUrl + rawVideoUrl;
+                        } else {
+                            videoUrl = baseUrl + "/" + rawVideoUrl;
+                        }
+                        hasVideo = true;
+                        Log.d(TAG, "✅ Video URL: " + videoUrl);
+                    } else {
+                        videoUrl = null;
+                        hasVideo = false;
+                    }
+
+                    // ==================== FIXED: Extract CONTRACT URL ====================
+                    String rawContractUrl = currentRoom.getContractUrl();
+                    if (rawContractUrl != null && !rawContractUrl.isEmpty()) {
+                        if (rawContractUrl.startsWith("http://") || rawContractUrl.startsWith("https://")) {
+                            contractUrl = rawContractUrl;
+                        } else if (rawContractUrl.startsWith("/")) {
+                            contractUrl = baseUrl + rawContractUrl;
+                        } else {
+                            contractUrl = baseUrl + "/" + rawContractUrl;
+                        }
+                        hasContract = true;
+                        Log.d(TAG, "✅ Contract URL: " + contractUrl);
+                    } else {
+                        contractUrl = null;
+                        hasContract = false;
+                    }
+
+                    // ==================== FIXED: Extract IMAGES URLs ====================
+                    imageUrls = new ArrayList<>();
+                    if (currentRoom.getImages() != null && !currentRoom.getImages().isEmpty()) {
+                        List<String> rawImages = currentRoom.getImages();
+
+                        for (String imgPath : rawImages) {
+                            if (imgPath != null && !imgPath.isEmpty()) {
+                                String fullUrl;
+
+                                if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+                                    fullUrl = imgPath;
+                                } else if (imgPath.startsWith("/")) {
+                                    fullUrl = baseUrl + imgPath;
+                                } else {
+                                    fullUrl = baseUrl + "/" + imgPath;
+                                }
+
+                                imageUrls.add(fullUrl);
+                                Log.d(TAG, "✅ Image URL: " + fullUrl);
+                            }
+                        }
+
+                        if (!imageUrls.isEmpty()) {
+                            setupImagePager();
+                        }
+                    } else {
+                        Log.d(TAG, "No images available for this room");
+                    }
+
+                    Log.d(TAG, "Has Video: " + hasVideo);
+                    Log.d(TAG, "Has Contract: " + hasContract);
+                    Log.d(TAG, "Images count: " + imageUrls.size());
+
+                    displayBasicInfo(currentRoom);
+                    displayOwnerInfo(currentRoom);
+                    displayAmenities(currentRoom);
+                    setupMapPreview(currentRoom);
+                    updateRoomStatus(currentRoom);
+                    updateBookButtonState();
+                    updateMediaButtonsVisibility();
+                } else {
+                    Toast.makeText(RoomDetailsActivity.this, "Failed to load rooms", Toast.LENGTH_SHORT).show();
                     if (btnBookNow != null) {
                         btnBookNow.setEnabled(false);
                         btnBookNow.setText("Error Loading");
                     }
                     finish();
-                    return;
                 }
-
-                currentRoom = response.body();
-                isRoomLoaded = true;
-                roomLat = currentRoom.getLatitude();
-                roomLng = currentRoom.getLongitude();
-
-                // Extract media data
-                videoUrl = currentRoom.getVideoUrl();
-                contractUrl = currentRoom.getContractUrl();
-                hasVideo = videoUrl != null && !videoUrl.isEmpty();
-                hasContract = contractUrl != null && !contractUrl.isEmpty();
-
-                // FIX: Extract images and convert to full URLs
-                imageUrls = new ArrayList<>();
-                if (currentRoom.getImages() != null && !currentRoom.getImages().isEmpty()) {
-                    List<String> rawImages = currentRoom.getImages();
-                    String baseUrl = "https://roomify-backend-2.onrender.com";
-
-                    for (String imgPath : rawImages) {
-                        if (imgPath != null && !imgPath.isEmpty()) {
-                            String fullUrl;
-                            if (imgPath.startsWith("http")) {
-                                fullUrl = imgPath;
-                            } else if (imgPath.startsWith("/")) {
-                                fullUrl = baseUrl + imgPath;
-                            } else {
-                                fullUrl = baseUrl + "/" + imgPath;
-                            }
-                            imageUrls.add(fullUrl);
-                            Log.d(TAG, "Image URL: " + fullUrl);
-                        }
-                    }
-                    setupImagePager();
-                }
-
-                Log.d(TAG, "Has Video: " + hasVideo);
-                Log.d(TAG, "Has Contract: " + hasContract);
-                Log.d(TAG, "Images count: " + imageUrls.size());
-
-                displayBasicInfo(currentRoom);
-                displayOwnerInfo(currentRoom);
-                displayAmenities(currentRoom);
-                setupMapPreview(currentRoom);
-                updateRoomStatus(currentRoom);
-                updateBookButtonState();
-                updateMediaButtonsVisibility();
             }
 
             @Override
-            public void onFailure(Call<Room> call, Throwable t) {
+            public void onFailure(Call<List<Room>> call, Throwable t) {
                 Toast.makeText(RoomDetailsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                Log.e(TAG, t.getMessage());
+                Log.e(TAG, "Network error: " + t.getMessage(), t);
                 if (btnBookNow != null) {
                     btnBookNow.setEnabled(false);
                     btnBookNow.setText("Network Error");
@@ -375,6 +438,8 @@ public class RoomDetailsActivity extends AppCompatActivity {
             }
         });
     }
+
+
 
     // ==================== DISPLAY METHODS ====================
 
@@ -476,13 +541,23 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
     private String getFullImageUrl(String imagePath) {
         if (imagePath == null || imagePath.isEmpty()) return null;
-        if (imagePath.startsWith("http")) return imagePath;
-        String baseUrl = "https://roomify-backend-2.onrender.com";
+
+        // Already a full URL
+        if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+            return imagePath;
+        }
+
+        String baseUrl = "https://roomify-backend.fly.dev";
+
+        // Path starts with slash
         if (imagePath.startsWith("/")) {
             return baseUrl + imagePath;
         }
+
+        // Path doesn't start with slash
         return baseUrl + "/" + imagePath;
     }
+
     private void setupImageIndicator() {
         if (imageIndicator == null || imageUrls.isEmpty()) return;
 
@@ -557,16 +632,24 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
-        // Only handle remote URLs
-        if (!videoUrl.startsWith("http")) {
-            ivVideoThumbnail.setImageResource(android.R.drawable.ic_media_play);
-            return;
+        // Ensure URL is valid
+        String finalVideoUrl = videoUrl;
+        if (!finalVideoUrl.startsWith("http")) {
+            final String baseUrl = "https://roomify-backend.fly.dev";
+            if (finalVideoUrl.startsWith("/")) {
+                finalVideoUrl = baseUrl + finalVideoUrl;
+            } else {
+                finalVideoUrl = baseUrl + "/" + finalVideoUrl;
+            }
         }
+
+        final String thumbnailUrl = finalVideoUrl;
+        Log.d(TAG, "Loading thumbnail for video: " + thumbnailUrl);
 
         executorService.execute(() -> {
             try {
                 android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever();
-                retriever.setDataSource(videoUrl, new java.util.HashMap<>());
+                retriever.setDataSource(thumbnailUrl, new java.util.HashMap<>());
 
                 android.graphics.Bitmap bitmap = retriever.getFrameAtTime(1000000); // 1 sec
 
@@ -588,6 +671,7 @@ public class RoomDetailsActivity extends AppCompatActivity {
             }
         });
     }
+
 
     // ==================== MAP METHODS ====================
 
@@ -654,11 +738,20 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
 
         Intent intent = new Intent(this, MediaViewerActivity.class);
-        // FIXED: Pass as Integer, not String
-        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_IMAGES);  // This is int
-        intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(imageUrls));
-        intent.putExtra(MediaViewerActivity.EXTRA_CURRENT_POSITION, viewPagerImages != null ? viewPagerImages.getCurrentItem() : 0);
-        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE, currentRoom != null ? currentRoom.getTitle() : "Room");
+        intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE,
+                MediaViewerActivity.MEDIA_TYPE_IMAGES);
+
+        intent.putStringArrayListExtra(
+                MediaViewerActivity.EXTRA_MEDIA_URLS,
+                new ArrayList<>(imageUrls)
+        );
+
+        int position = (viewPagerImages != null) ? viewPagerImages.getCurrentItem() : 0;
+        intent.putExtra(MediaViewerActivity.EXTRA_CURRENT_POSITION, position);
+
+        intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE,
+                currentRoom != null ? currentRoom.getTitle() : "Room");
+
         startActivity(intent);
     }
 
@@ -668,42 +761,48 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
-        // ONLY allow valid remote URLs
-        if (!videoUrl.startsWith("http")) {
-            Toast.makeText(this, "Video not available (invalid source)", Toast.LENGTH_SHORT).show();
-            Log.e(TAG, "Invalid video URL: " + videoUrl);
-            return;
+        // Ensure URL is valid
+        String finalVideoUrl = videoUrl;
+        if (!finalVideoUrl.startsWith("http")) {
+            String baseUrl = "https://roomify-backend.fly.dev";
+            if (finalVideoUrl.startsWith("/")) {
+                finalVideoUrl = baseUrl + finalVideoUrl;
+            } else {
+                finalVideoUrl = baseUrl + "/" + finalVideoUrl;
+            }
         }
+
+        Log.d(TAG, "Playing video URL: " + finalVideoUrl);
 
         try {
-            List<String> videoUrls = new ArrayList<>();
-            videoUrls.add(videoUrl);
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.parse(finalVideoUrl), "video/mp4");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            Intent intent = new Intent(this, MediaViewerActivity.class);
-            intent.putExtra(MediaViewerActivity.EXTRA_MEDIA_TYPE, MediaViewerActivity.MEDIA_TYPE_VIDEO);
-            intent.putStringArrayListExtra(MediaViewerActivity.EXTRA_MEDIA_URLS, new ArrayList<>(videoUrls));
-            intent.putExtra(MediaViewerActivity.EXTRA_ROOM_TITLE,
-                    currentRoom != null ? currentRoom.getTitle() : "Room Video");
-
-            startActivity(intent);
-
+            startActivity(Intent.createChooser(intent, "Play video with"));
         } catch (Exception e) {
-            Log.e(TAG, "Error playing video: " + e.getMessage());
-            Toast.makeText(this, "Error playing video", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Video play error: " + e.getMessage());
+            Toast.makeText(this, "Error playing video: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-
     private void downloadVideo() {
         if (videoUrl == null || videoUrl.trim().isEmpty()) {
             Toast.makeText(this, "No video available", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        if (!videoUrl.startsWith("http")) {
-            Toast.makeText(this, "Invalid video URL", Toast.LENGTH_SHORT).show();
-            Log.e(TAG, "Invalid download URL: " + videoUrl);
-            return;
+        // Ensure URL is valid
+        String finalVideoUrl = videoUrl;
+        if (!finalVideoUrl.startsWith("http")) {
+            String baseUrl = "https://roomify-backend.fly.dev";
+            if (finalVideoUrl.startsWith("/")) {
+                finalVideoUrl = baseUrl + finalVideoUrl;
+            } else {
+                finalVideoUrl = baseUrl + "/" + finalVideoUrl;
+            }
         }
+
+        Log.d(TAG, "Downloading video from: " + finalVideoUrl);
 
         if (!checkStoragePermission()) {
             requestStoragePermission();
@@ -711,19 +810,36 @@ public class RoomDetailsActivity extends AppCompatActivity {
         }
 
         String fileName = "room_video_" + roomId + "_" + System.currentTimeMillis() + ".mp4";
-        downloadFile(videoUrl, fileName, "Video");
+        downloadFile(finalVideoUrl, fileName, "Video");
     }
-
     private void viewContract() {
         if (!hasContract || contractUrl == null || contractUrl.isEmpty()) {
             Toast.makeText(this, "No contract available", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(Uri.parse(contractUrl), "application/pdf");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(intent, "Open contract with"));
+        // Ensure URL is valid
+        String finalContractUrl = contractUrl;
+        if (!finalContractUrl.startsWith("http")) {
+            String baseUrl = "https://roomify-backend.fly.dev";
+            if (finalContractUrl.startsWith("/")) {
+                finalContractUrl = baseUrl + finalContractUrl;
+            } else {
+                finalContractUrl = baseUrl + "/" + finalContractUrl;
+            }
+        }
+
+        Log.d(TAG, "Opening contract URL: " + finalContractUrl);
+
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.parse(finalContractUrl), "application/pdf");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent, "Open contract with"));
+        } catch (Exception e) {
+            Log.e(TAG, "Contract view error: " + e.getMessage());
+            Toast.makeText(this, "Error opening contract: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void downloadContract() {
@@ -732,53 +848,89 @@ public class RoomDetailsActivity extends AppCompatActivity {
             return;
         }
 
+        // Ensure URL is valid
+        String finalContractUrl = contractUrl;
+        if (!finalContractUrl.startsWith("http")) {
+            String baseUrl = "https://roomify-backend.fly.dev";
+            if (finalContractUrl.startsWith("/")) {
+                finalContractUrl = baseUrl + finalContractUrl;
+            } else {
+                finalContractUrl = baseUrl + "/" + finalContractUrl;
+            }
+        }
+
+        Log.d(TAG, "Downloading contract from: " + finalContractUrl);
+
         if (!checkStoragePermission()) {
             requestStoragePermission();
             return;
         }
 
         String fileName = "contract_" + roomId + "_" + System.currentTimeMillis() + ".pdf";
-        downloadFile(contractUrl, fileName, "Contract");
+        downloadFile(finalContractUrl, fileName, "Contract");
     }
 
     private void downloadFile(String fileUrl, String fileName, String fileType) {
+
         Toast.makeText(this, "Downloading " + fileType + "...", Toast.LENGTH_SHORT).show();
 
         executorService.execute(() -> {
+
+            InputStream inputStream = null;
+            FileOutputStream outputStream = null;
+            HttpURLConnection connection = null;
+
             try {
                 URL url = new URL(fileUrl);
-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(15000);
                 connection.connect();
 
                 if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                    InputStream inputStream = connection.getInputStream();
-                    File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+
+                    inputStream = connection.getInputStream();
+
+                    File downloadDir = Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS
+                    );
                     if (!downloadDir.exists()) downloadDir.mkdirs();
 
                     File outputFile = new File(downloadDir, fileName);
-                    FileOutputStream outputStream = new FileOutputStream(outputFile);
+                    outputStream = new FileOutputStream(outputFile);
+
                     byte[] buffer = new byte[4096];
                     int bytesRead;
+
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
                     }
-                    outputStream.close();
-                    inputStream.close();
-                    connection.disconnect();
 
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, fileType + " downloaded to Downloads folder", Toast.LENGTH_LONG).show();
-                        showDownloadCompleteDialog(fileName);
-                    });
+                    runOnUiThread(() ->
+                            Toast.makeText(this,
+                                    fileType + " downloaded successfully",
+                                    Toast.LENGTH_LONG).show()
+                    );
+
                 } else {
-                    runOnUiThread(() -> Toast.makeText(this, "Download failed", Toast.LENGTH_SHORT).show());
+                    runOnUiThread(() ->
+                            Toast.makeText(this, "Download failed", Toast.LENGTH_SHORT).show()
+                    );
                 }
+
             } catch (Exception e) {
                 Log.e(TAG, "Download error: " + e.getMessage());
-                runOnUiThread(() -> Toast.makeText(this, "Download error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Download error", Toast.LENGTH_SHORT).show()
+                );
+
+            } finally {
+                try {
+                    if (inputStream != null) inputStream.close();
+                    if (outputStream != null) outputStream.close();
+                    if (connection != null) connection.disconnect();
+                } catch (Exception ignored) {}
             }
         });
     }
@@ -881,6 +1033,12 @@ public class RoomDetailsActivity extends AppCompatActivity {
                 Log.e(TAG, "Failed to check bookings", t);
             }
         });
+
+        // Also check if room is available from the room object
+        if (currentRoom != null && !currentRoom.isAvailable()) {
+            alreadyRequested = true;
+            updateBookButtonState();
+        }
     }
 
     private void checkIfFavorite() {
@@ -906,29 +1064,43 @@ public class RoomDetailsActivity extends AppCompatActivity {
 
     private void toggleFavorite() {
         if (currentUserId == -1) {
-            Toast.makeText(this, "Please login to save favorites", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        apiInterface.toggleFavorite(currentUserId, roomId).enqueue(new Callback<ApiResponse<Void>>() {
-            @Override
-            public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
-                if (response.isSuccessful() && response.body() != null && btnFavorite != null) {
-                    boolean isNowFavorite = response.body().getMessage() != null &&
-                            response.body().getMessage().contains("added");
-                    btnFavorite.setImageResource(isNowFavorite ? R.drawable.ic_favorite_filled : R.drawable.ic_favorite_outline);
-                    Toast.makeText(RoomDetailsActivity.this,
-                            isNowFavorite ? "Added to favorites" : "Removed from favorites",
-                            Toast.LENGTH_SHORT).show();
-                }
-            }
+        apiInterface.toggleFavorite(currentUserId, roomId)
+                .enqueue(new Callback<ApiResponse<Boolean>>() {
 
-            @Override
-            public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
-                Log.e(TAG, "Failed to toggle favorite", t);
-                Toast.makeText(RoomDetailsActivity.this, "Failed to update favorites", Toast.LENGTH_SHORT).show();
-            }
-        });
+                    @Override
+                    public void onResponse(Call<ApiResponse<Boolean>> call,
+                                           Response<ApiResponse<Boolean>> response) {
+
+                        if (response.isSuccessful() && response.body() != null) {
+
+                            Boolean isFav = response.body().getData();
+                            boolean isNowFavorite = Boolean.TRUE.equals(isFav);
+
+                            if (btnFavorite != null) {
+                                btnFavorite.setImageResource(
+                                        isNowFavorite ?
+                                                R.drawable.ic_favorite_filled :
+                                                R.drawable.ic_favorite_outline
+                                );
+                            }
+
+                            Toast.makeText(RoomDetailsActivity.this,
+                                    isNowFavorite ? "Added to favorites" : "Removed from favorites",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<ApiResponse<Boolean>> call, Throwable t) {
+                        Toast.makeText(RoomDetailsActivity.this,
+                                "Failed to update favorites",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     private void requestRoomBooking() {
@@ -961,27 +1133,61 @@ public class RoomDetailsActivity extends AppCompatActivity {
             public void onResponse(Call<ApiResponse<BookingResponse>> call,
                                    Response<ApiResponse<BookingResponse>> response) {
                 btnBookNow.setEnabled(true);
+                btnBookNow.setText("Book Now");
 
-                if (response.isSuccessful() && response.body() != null) {
+                // Handle HTTP 409 Conflict (Room already booked)
+                if (response.code() == 409) {
+                    Toast.makeText(RoomDetailsActivity.this,
+                            "This room is already booked. Please choose another room.",
+                            Toast.LENGTH_LONG).show();
+                    alreadyRequested = true;
+                    updateBookButtonState();
+
+                    // Update UI to show room as booked
+                    if (tvRoomStatus != null) {
+                        tvRoomStatus.setText("Booked");
+                        tvRoomStatus.setBackgroundResource(R.drawable.status_booked_bg);
+                    }
+                    return;
+                }
+
+                if (!response.isSuccessful()) {
+                    Toast.makeText(RoomDetailsActivity.this,
+                            "Server error: " + response.code(),
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                if (response.body() != null) {
                     ApiResponse<BookingResponse> apiResponse = response.body();
                     if (apiResponse.isSuccess()) {
                         Toast.makeText(RoomDetailsActivity.this, "Booking request sent!", Toast.LENGTH_SHORT).show();
                         alreadyRequested = true;
                         updateBookButtonState();
                     } else {
-                        Toast.makeText(RoomDetailsActivity.this, apiResponse.getMessage(), Toast.LENGTH_SHORT).show();
+                        String errorMsg = apiResponse.getMessage();
+                        Toast.makeText(RoomDetailsActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+
+                        // If room is already booked, update UI
+                        if (errorMsg != null && errorMsg.contains("already has an active booking")) {
+                            alreadyRequested = true;
+                            updateBookButtonState();
+                            if (tvRoomStatus != null) {
+                                tvRoomStatus.setText("Booked");
+                                tvRoomStatus.setBackgroundResource(R.drawable.status_booked_bg);
+                            }
+                        }
                     }
                 } else {
-                    Toast.makeText(RoomDetailsActivity.this, "Server error", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(RoomDetailsActivity.this, "Unknown error occurred", Toast.LENGTH_SHORT).show();
                 }
-                btnBookNow.setText("Book Now");
             }
 
             @Override
             public void onFailure(Call<ApiResponse<BookingResponse>> call, Throwable t) {
                 btnBookNow.setEnabled(true);
                 btnBookNow.setText("Book Now");
-                Toast.makeText(RoomDetailsActivity.this, t.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(RoomDetailsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
     }

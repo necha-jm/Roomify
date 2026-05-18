@@ -22,6 +22,8 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -69,7 +71,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.app.roomify.database.RoomEntity;
 import com.app.roomify.database.RoomifyDatabase;
 import com.app.roomify.models.ApiResponse;
-import com.app.roomify.models.BookingResponse;  // ADDED: Import BookingResponse
+import com.app.roomify.models.BookingResponse;
 import com.app.roomify.models.User;
 import com.app.roomify.network.APIClient;
 import com.app.roomify.network.APIInterface;
@@ -85,6 +87,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -212,7 +215,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             }
 
             apartmentCard = findViewById(R.id.apartment_card);
-            addRoomCard = findViewById(R.id.addRoom_card);
             languageCard = findViewById(R.id.language_card);
             tabProfile = findViewById(R.id.tab_profile);
             tabMenu = findViewById(R.id.tab_menu);
@@ -231,6 +233,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
     private void navigateBasedOnRole() {
         if (!tokenManager.isLoggedIn()) {
+            Log.e(TAG, "User not logged in");
             Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show();
             startActivity(new Intent(this, LoginActivity.class));
             return;
@@ -239,18 +242,30 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         User user = tokenManager.getUser();
 
         if (user == null) {
+            Log.e(TAG, "User object is null");
             Toast.makeText(this, "Session error. Please login again.", Toast.LENGTH_SHORT).show();
             startActivity(new Intent(this, LoginActivity.class));
             return;
         }
 
-        if ("owner".equals(user.getRole())) {
+        String role = user.getRole();
+        Log.d(TAG, "User role: " + role);
+        Log.d(TAG, "User name: " + user.getName());
+        Log.d(TAG, "User email: " + user.getEmail());
+
+        if (role != null && role.equalsIgnoreCase("owner")) {
+            Log.d(TAG, "Navigating to OwnerDashboard");
             startActivity(new Intent(this, OwnerDashboard.class));
+        } else if (role != null && role.equalsIgnoreCase("tenant")) {
+            Log.d(TAG, "Navigating to DashboardActivity");
+            startActivity(new Intent(this, DashboardActivity.class));
         } else {
+            // Default fallback - check if role is missing or unknown
+            Log.w(TAG, "Unknown or missing role: " + role + ", defaulting to DashboardActivity");
+            Toast.makeText(this, "Role not recognized, redirecting to tenant dashboard", Toast.LENGTH_SHORT).show();
             startActivity(new Intent(this, DashboardActivity.class));
         }
     }
-
     private void setupClickListeners() {
         try {
             // Language selection
@@ -286,17 +301,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             // SELECT tab navigation
             if (tabSelect != null) {
                 tabSelect.setOnClickListener(v -> navigateBasedOnRole());
-            }
-
-            // Add room card click
-            if (addRoomCard != null) {
-                addRoomCard.setOnClickListener(v -> {
-                    try {
-                        startActivity(new Intent(LocationMap.this, PostRoomActivity.class));
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error starting PostRoomActivity: " + e.getMessage());
-                    }
-                });
             }
 
             // Home tab
@@ -358,7 +362,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
     }
 
-
     private void animateToLocation(LatLng latLng, float zoom) {
         if (myMap == null || latLng == null) return;
 
@@ -377,6 +380,155 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         finish();
     }
 
+
+
+    // Add this method to search for rooms in a specific area
+    private void searchRoomsByArea(String areaName) {
+        if (areaName.isEmpty() || myMap == null) {
+            Toast.makeText(this, "Please enter an area to search", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showLoading(true);
+
+        new Thread(() -> {
+            try {
+                Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocationName(areaName, 1);
+
+                runOnUiThread(() -> {
+                    showLoading(false);
+
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address address = addresses.get(0);
+                        LatLng searchLatLng = new LatLng(address.getLatitude(), address.getLongitude());
+
+                        // Filter rooms by distance from search location
+                        List<Room> nearbyRooms = filterRoomsByDistance(searchLatLng, 5000); // 5km radius
+
+                        if (nearbyRooms.isEmpty()) {
+                            Toast.makeText(this, "No rooms found in " + areaName, Toast.LENGTH_SHORT).show();
+                            // Still animate to the location
+                            animateToLocation(searchLatLng, 14f);
+                        } else {
+                            Toast.makeText(this, "Found " + nearbyRooms.size() + " rooms in " + areaName, Toast.LENGTH_SHORT).show();
+                            updateMapWithFilteredRooms(nearbyRooms);
+
+                            // Animate to show all found rooms
+                            animateToRoomBounds(nearbyRooms, searchLatLng);
+                        }
+
+                        // Add search marker
+                        updateSearchMarker(searchLatLng, areaName, getAddressString(address));
+
+                    } else {
+                        Toast.makeText(this, "Location not found: " + areaName, Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    Toast.makeText(this, "Error searching location: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+                Log.e(TAG, "Geocoder error: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    // Filter rooms by distance from a location
+    private List<Room> filterRoomsByDistance(LatLng center, double radiusInMeters) {
+        List<Room> nearbyRooms = new ArrayList<>();
+
+        for (Room room : roomsList) {
+            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
+
+            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
+            float[] results = new float[1];
+            android.location.Location.distanceBetween(
+                    center.latitude, center.longitude,
+                    roomLocation.latitude, roomLocation.longitude,
+                    results
+            );
+
+            float distanceInMeters = results[0];
+
+            // Check if room is within radius and is available
+            if (distanceInMeters <= radiusInMeters) {
+                String status = roomBookingStatus.get(room.getId());
+                if (status == null || !"BOOKED".equalsIgnoreCase(status)) {
+                    nearbyRooms.add(room);
+                }
+            }
+        }
+
+        return nearbyRooms;
+    }
+
+    // Update map with filtered rooms
+    private void updateMapWithFilteredRooms(List<Room> filteredRooms) {
+        if (myMap == null) return;
+
+        // Clear existing room markers (keep current location marker)
+        for (Marker marker : markerRoomMap.keySet()) {
+            marker.remove();
+        }
+        markerRoomMap.clear();
+
+        // Add filtered rooms to map
+        for (Room room : filteredRooms) {
+            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
+
+            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
+            String status = roomBookingStatus.get(room.getId());
+            boolean isAvailable = (status == null || "AVAILABLE".equalsIgnoreCase(status));
+
+            float markerColor = isAvailable ? BitmapDescriptorFactory.HUE_BLUE : BitmapDescriptorFactory.HUE_RED;
+            String snippet = isAvailable ? "Available - $" + room.getPrice() : "Not Available";
+
+            Marker marker = myMap.addMarker(
+                    new MarkerOptions()
+                            .position(roomLocation)
+                            .title(room.getTitle())
+                            .snippet(snippet)
+                            .icon(BitmapDescriptorFactory.defaultMarker(markerColor))
+            );
+
+            if (marker != null) {
+                marker.setTag(room.getId());
+                markerRoomMap.put(marker, room);
+            }
+        }
+
+        Log.d(TAG, "Updated map with " + filteredRooms.size() + " filtered rooms");
+    }
+
+    // Animate camera to show all filtered rooms
+    private void animateToRoomBounds(List<Room> rooms, LatLng searchLocation) {
+        if (myMap == null || rooms.isEmpty()) return;
+
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+
+        // Add search location
+        if (searchLocation != null) {
+            builder.include(searchLocation);
+        }
+
+        // Add all room locations
+        for (Room room : rooms) {
+            builder.include(new LatLng(room.getLatitude(), room.getLongitude()));
+        }
+
+        // Add current location if available
+        if (currentLocation != null) {
+            builder.include(new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude()));
+        }
+
+        LatLngBounds bounds = builder.build();
+        int padding = 100; // pixels
+        myMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding));
+    }
+
+
     private void setupSearchButton() {
         if (btnSearchAddress != null) {
             btnSearchAddress.setOnClickListener(v -> {
@@ -384,12 +536,286 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 if (!query.isEmpty()) {
                     Log.d(TAG, "Search button clicked for: " + query);
                     hideKeyboard();
-                    performImprovedSearch(query);
+                    performSearch(query);
                 } else {
                     Toast.makeText(this, "Please enter a location to search", Toast.LENGTH_SHORT).show();
                 }
             });
         }
+    }
+
+    // Update or add search marker
+    private void updateSearchMarker(LatLng position, String title, String snippet) {
+        if (searchMarker == null) {
+            searchMarker = myMap.addMarker(new MarkerOptions()
+                    .position(position)
+                    .title(title)
+                    .snippet(snippet)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)));
+        } else {
+            searchMarker.setPosition(position);
+            searchMarker.setTitle(title);
+            searchMarker.setSnippet(snippet);
+        }
+
+        if (searchMarker != null) {
+            searchMarker.showInfoWindow();
+        }
+    }
+
+
+
+
+    // Search rooms near current location
+    private void searchByCurrentLocation(double radiusKm) {
+        if (currentLocation == null) {
+            Toast.makeText(this, "Current location not available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+        double radiusMeters = radiusKm * 1000;
+
+        List<Room> nearbyRooms = filterRoomsByDistance(currentLatLng, radiusMeters);
+
+        if (nearbyRooms.isEmpty()) {
+            Toast.makeText(this, "No rooms found within " + radiusKm + " km", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Found " + nearbyRooms.size() + " rooms within " + radiusKm + " km", Toast.LENGTH_SHORT).show();
+            updateMapWithFilteredRooms(nearbyRooms);
+            animateToRoomBounds(nearbyRooms, currentLatLng);
+        }
+    }
+
+    // Reset map to show all rooms
+    private void resetToAllRooms() {
+        if (roomsList.isEmpty()) {
+            Toast.makeText(this, "No rooms available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        updateMapWithRooms(roomsList);
+        showAllRoomsOnMap();
+        clearSearchMarker();
+        Toast.makeText(this, "Showing all rooms", Toast.LENGTH_SHORT).show();
+    }
+
+    private void performSearch(String query) {
+        if (query.isEmpty() || myMap == null) {
+            Toast.makeText(this, "Cannot perform search", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showLoading(true);
+
+        new Thread(() -> {
+            try {
+                Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocationName(query, 5); // Get up to 5 results
+
+                runOnUiThread(() -> {
+                    showLoading(false);
+
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address address = addresses.get(0);
+                        LatLng searchLatLng = new LatLng(address.getLatitude(), address.getLongitude());
+
+                        // Animate camera to searched location
+                        animateToLocation(searchLatLng, 14f);
+
+                        // Add search marker
+                        String addressString = getAddressString(address);
+                        updateSearchMarker(searchLatLng, query, addressString);
+
+                        // Search for rooms near this area
+                        searchRoomsInArea(searchLatLng, query, addressString);
+
+                        Toast.makeText(this, "Showing rooms near: " + query, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Location not found: " + query, Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    Toast.makeText(this, "Error searching location: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+                Log.e(TAG, "Geocoder error: " + e.getMessage());
+            }
+        }).start();
+    }
+
+
+    private void searchRoomsInArea(LatLng searchLocation, String areaName, String fullAddress) {
+        if (roomsList.isEmpty()) {
+            Toast.makeText(this, "No rooms available to search", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Search radius in meters (5km by default)
+        double searchRadius = 5000; // 5km
+
+        // Filter rooms within the search radius
+        List<Room> nearbyRooms = new ArrayList<>();
+
+        for (Room room : roomsList) {
+            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
+
+            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
+            float[] results = new float[1];
+            android.location.Location.distanceBetween(
+                    searchLocation.latitude, searchLocation.longitude,
+                    roomLocation.latitude, roomLocation.longitude,
+                    results
+            );
+
+            float distanceInMeters = results[0];
+
+            // Check if room is within radius
+            if (distanceInMeters <= searchRadius) {
+                nearbyRooms.add(room);
+                Log.d(TAG, "Room " + room.getTitle() + " is " + distanceInMeters + " meters away");
+            }
+        }
+
+        if (nearbyRooms.isEmpty()) {
+            Toast.makeText(this, "No rooms found within 5km of " + areaName, Toast.LENGTH_LONG).show();
+            // Still show all rooms but zoomed to area
+            updateMapWithFilteredRooms(roomsList);
+        } else {
+            Toast.makeText(this, "Found " + nearbyRooms.size() + " rooms near " + areaName, Toast.LENGTH_SHORT).show();
+            updateMapWithFilteredRooms(nearbyRooms);
+
+            // Animate to show all found rooms within bounds
+            animateToRoomBounds(nearbyRooms, searchLocation);
+        }
+    }
+
+    private void searchRoomsWithRadius(LatLng searchLocation, double radiusKm, String areaName) {
+        if (roomsList.isEmpty()) {
+            Toast.makeText(this, "No rooms available to search", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        double radiusMeters = radiusKm * 1000;
+        List<Room> nearbyRooms = new ArrayList<>();
+
+        for (Room room : roomsList) {
+            if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
+
+            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
+            float[] results = new float[1];
+            android.location.Location.distanceBetween(
+                    searchLocation.latitude, searchLocation.longitude,
+                    roomLocation.latitude, roomLocation.longitude,
+                    results
+            );
+
+            if (results[0] <= radiusMeters) {
+                nearbyRooms.add(room);
+            }
+        }
+
+        if (nearbyRooms.isEmpty()) {
+            Toast.makeText(this, "No rooms found within " + radiusKm + " km of " + areaName, Toast.LENGTH_LONG).show();
+            updateMapWithFilteredRooms(roomsList);
+        } else {
+            Toast.makeText(this, "Found " + nearbyRooms.size() + " rooms within " + radiusKm + " km", Toast.LENGTH_SHORT).show();
+            updateMapWithFilteredRooms(nearbyRooms);
+            animateToRoomBounds(nearbyRooms, searchLocation);
+        }
+    }
+
+    private void showRadiusSearchDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Search by Radius");
+
+        // Create custom layout
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(50, 20, 50, 20);
+
+        final EditText areaInput = new EditText(this);
+        areaInput.setHint("Enter area name (e.g., Mwanza)");
+        layout.addView(areaInput);
+
+        final EditText radiusInput = new EditText(this);
+        radiusInput.setHint("Enter radius in km (e.g., 5)");
+        radiusInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        layout.addView(radiusInput);
+
+        builder.setView(layout);
+
+        builder.setPositiveButton("Search", (dialog, which) -> {
+            String area = areaInput.getText().toString().trim();
+            String radiusText = radiusInput.getText().toString().trim();
+
+            if (area.isEmpty()) {
+                Toast.makeText(this, "Please enter an area", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            double radiusKm = 5.0; // Default radius
+            if (!radiusText.isEmpty()) {
+                radiusKm = Double.parseDouble(radiusText);
+            }
+
+            performRadiusSearch(area, radiusKm);
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    private void performRadiusSearch(String areaName, double radiusKm) {
+        showLoading(true);
+
+        new Thread(() -> {
+            try {
+                Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+                List<Address> addresses = geocoder.getFromLocationName(areaName, 1);
+
+                runOnUiThread(() -> {
+                    showLoading(false);
+
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address address = addresses.get(0);
+                        LatLng searchLocation = new LatLng(address.getLatitude(), address.getLongitude());
+
+                        animateToLocation(searchLocation, 14f);
+                        updateSearchMarker(searchLocation, areaName, getAddressString(address));
+                        searchRoomsWithRadius(searchLocation, radiusKm, areaName);
+                    } else {
+                        Toast.makeText(this, "Location not found: " + areaName, Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    Toast.makeText(this, "Error searching location: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
+    private void addClearSearchButton() {
+        // Add a clear button to your search card or FAB
+        // You can reuse the existing clear functionality in the search EditText
+        // The right drawable already clears the search
+    }
+
+    // Call this to reset to show all rooms
+    private void clearSearchAndShowAllRooms() {
+        clearSearchMarker();
+
+        if (roomsList.isEmpty()) {
+            loadRoomsFromBackend();
+        } else {
+            updateMapWithRooms(roomsList);
+            showAllRoomsOnMap();
+        }
+
+        Toast.makeText(this, "Showing all rooms", Toast.LENGTH_SHORT).show();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -406,7 +832,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 String query = searchEditText.getText().toString().trim();
                 if (!query.isEmpty()) {
                     Log.d(TAG, "Keyboard search for: " + query);
-                    performImprovedSearch(query);
+                    performSearch(query);
                     hideKeyboard();
                 } else {
                     Toast.makeText(this, "Please enter a location to search", Toast.LENGTH_SHORT).show();
@@ -416,6 +842,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             return false;
         });
 
+        // Clear button functionality
         searchEditText.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 Drawable drawableRight = searchEditText.getCompoundDrawables()[2];
@@ -423,16 +850,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                     int drawableWidth = drawableRight.getBounds().width();
                     if (event.getX() >= (searchEditText.getWidth() - drawableWidth
                             - searchEditText.getPaddingRight())) {
+                        // Clear the search
                         searchEditText.setText("");
-                        clearSearchMarker();
-                        if (currentLocation != null && myMap != null) {
-                            LatLng latLng  = new LatLng(
-                                    currentLocation.getLatitude(),
-                                    currentLocation.getLongitude()
-                            );
-                            animateToLocation(latLng, 16f);
-                            Toast.makeText(this, "Returned to your location", Toast.LENGTH_SHORT).show();
-                        }
+                        clearSearchAndShowAllRooms(); // Show all rooms again
                         return true;
                     }
                 }
@@ -447,57 +867,19 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         Log.d(TAG, "Search setup completed");
     }
 
-    private void performImprovedSearch(String query) {
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.map_menu, menu);
+        return true;
+    }
 
-        if (query.isEmpty() || myMap == null) {
-            Toast.makeText(this, "Cannot perform search", Toast.LENGTH_SHORT).show();
-            return;
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.menu_radius_search) {
+            showRadiusSearchDialog();
+            return true;
         }
-
-        showLoading(true);
-
-        new Thread(() -> {
-            try {
-                Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-                List<Address> addresses = geocoder.getFromLocationName(query, 1);
-
-                runOnUiThread(() -> {
-                    showLoading(false);
-
-                    if (addresses != null && !addresses.isEmpty()) {
-                        Address address = addresses.get(0);
-                        LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
-
-                        animateToLocation(latLng, 16f);
-                        if (searchMarker == null) {
-                            searchMarker = myMap.addMarker(new MarkerOptions()
-                                    .position(latLng)
-                                    .title(query)
-                                    .snippet(getAddressString(address))
-                                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)));
-                        } else {
-                            searchMarker.setPosition(latLng);
-                            searchMarker.setTitle(query);
-                            searchMarker.setSnippet(getAddressString(address));
-                        }
-
-                        if (searchMarker != null) {
-                            searchMarker.showInfoWindow();
-                        }
-                        Toast.makeText(this, "Found: " + query, Toast.LENGTH_SHORT).show();
-
-                    } else {
-                        Toast.makeText(this, "Location not found. Please try a different address.", Toast.LENGTH_LONG).show();
-                    }
-                });
-            } catch (IOException e) {
-                runOnUiThread(() -> {
-                    showLoading(false);
-                    Toast.makeText(this, "Error searching location: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-                Log.e(TAG, "Geocoder error: " + e.getMessage());
-            }
-        }).start();
+        return super.onOptionsItemSelected(item);
     }
 
     private String getAddressString(Address address) {
@@ -707,20 +1089,17 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
-        // Remove old marker
         if (currentLocationMarker != null) {
             currentLocationMarker.remove();
         }
 
-        // Add custom marker
         currentLocationMarker = myMap.addMarker(
                 new MarkerOptions()
                         .position(latLng)
-                        .title("my locatio")
+                        .title("my location")
                         .icon(getResizedMarker(R.drawable.ic_location, 80, 80))
         );
 
-        // Add circle effect (modern look)
         myMap.addCircle(new com.google.android.gms.maps.model.CircleOptions()
                 .center(latLng)
                 .radius(50)
@@ -812,7 +1191,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
 
         myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 14f));
 
-        // Load rooms from backend with offline support
         loadRoomsFromBackend();
 
         myMap.setOnMarkerClickListener(marker -> {
@@ -839,7 +1217,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         });
     }
 
-    // ==================== OFFLINE SUPPORT METHODS ====================
+
+
 
     private void loadRoomsFromBackend() {
         if (apiInterface == null || myMap == null) {
@@ -848,33 +1227,33 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         }
 
         showLoading(true);
+        Log.d(TAG, "Loading rooms from backend...");
 
-        // Try to load from server first
+        // Use unwrapped response (direct List)
         Call<List<Room>> call = apiInterface.getAllRooms();
         call.enqueue(new Callback<List<Room>>() {
             @Override
             public void onResponse(Call<List<Room>> call, Response<List<Room>> response) {
+                Log.d(TAG, "API Response Code: " + response.code());
+
                 if (response.isSuccessful() && response.body() != null) {
                     List<Room> rooms = response.body();
                     if (rooms != null && !rooms.isEmpty()) {
+                        Log.d(TAG, "✅ Loaded " + rooms.size() + " rooms from API");
                         roomsList.clear();
                         roomsList.addAll(rooms);
-
-                        // Save to local database for offline use
                         saveRoomsToLocalDatabase(rooms);
-
-                        // Fetch booking status
                         fetchBookingStatusForRooms(rooms);
                     } else {
+                        Log.w(TAG, "API returned empty room list");
                         showLoading(false);
-                        Log.d(TAG, "No rooms available");
                         loadRoomsFromLocalDatabase();
                     }
                 } else {
+                    Log.e(TAG, "Response error: " + response.code());
                     showLoading(false);
-                    Log.e(TAG, "Failed to load rooms. Code: " + response.code());
                     loadRoomsFromLocalDatabase();
-                    Toast.makeText(LocationMap.this, "Using cached data (offline mode)", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(LocationMap.this, "Using cached data", Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -883,7 +1262,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                 showLoading(false);
                 Log.e(TAG, "Network error loading rooms: " + t.getMessage());
                 loadRoomsFromLocalDatabase();
-                Toast.makeText(LocationMap.this, "Using cached data (offline mode)", Toast.LENGTH_SHORT).show();
+                Toast.makeText(LocationMap.this, "Network error, using cached data", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -926,8 +1305,6 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
                         }
                         roomsList.clear();
                         roomsList.addAll(rooms);
-
-                        // For offline mode, clear booking status and show all as available
                         roomBookingStatus.clear();
                         updateMapWithRooms(rooms);
                         Log.d(TAG, "Loaded " + rooms.size() + " rooms from local database");
@@ -967,77 +1344,138 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         });
     }
 
-    // FIXED: Changed to use BookingResponse instead of BookingRequest
     private void fetchBookingStatusForRooms(List<Room> rooms) {
-        if (currentUserId == null) {
-            // User not logged in, just show all rooms as available
+        if (rooms == null || rooms.isEmpty()) {
             showLoading(false);
-            updateMapWithRooms(rooms);
+            updateMapWithRooms(new ArrayList<>());
             return;
         }
 
-        final int[] processedCount = {0};
         final int totalRooms = rooms.size();
+        final AtomicInteger completed = new AtomicInteger(0);
 
-        if (totalRooms == 0) {
-            showLoading(false);
-            updateMapWithRooms(rooms);
-            return;
-        }
-
-        // Clear previous status
         roomBookingStatus.clear();
 
         for (Room room : rooms) {
-            // CHANGED: Use BookingResponse instead of BookingRequest
-            Call<ApiResponse<List<BookingResponse>>> bookingCall = apiInterface.checkUserBooking(currentUserId, room.getId());
             final Long roomId = room.getId();
 
-            bookingCall.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
-                @Override
-                public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
-                                       Response<ApiResponse<List<BookingResponse>>> response) {
-                    processedCount[0]++;
-
-                    if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                        List<BookingResponse> bookings = response.body().getData();
-                        if (bookings != null && !bookings.isEmpty()) {
-                            String status = bookings.get(0).getStatus();
-                            roomBookingStatus.put(roomId, status);
-                            Log.d(TAG, "Room " + roomId + " has booking status: " + status);
-                        }
-                    }
-
-                    if (processedCount[0] == totalRooms) {
+            if (currentUserId != null) {
+                fetchUserBookingForRoom(roomId, rooms, totalRooms, completed);
+            } else {
+                roomBookingStatus.put(roomId, "AVAILABLE");
+                if (completed.incrementAndGet() == totalRooms) {
+                    runOnUiThread(() -> {
                         showLoading(false);
                         updateMapWithRooms(rooms);
-                    }
+                    });
                 }
-
-                @Override
-                public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
-                    processedCount[0]++;
-                    Log.e(TAG, "Failed to fetch booking status for room: " + roomId, t);
-
-                    if (processedCount[0] == totalRooms) {
-                        showLoading(false);
-                        updateMapWithRooms(rooms);
-                    }
-                }
-            });
+            }
         }
+    }
+
+    private void fetchUserBookingForRoom(Long roomId, List<Room> rooms, int totalRooms, AtomicInteger completed) {
+        Call<ApiResponse<List<BookingResponse>>> call = apiInterface.checkUserBooking(currentUserId, roomId);
+
+        call.enqueue(new Callback<ApiResponse<List<BookingResponse>>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<List<BookingResponse>>> call,
+                                   Response<ApiResponse<List<BookingResponse>>> response) {
+
+                String status = "AVAILABLE";
+
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    List<BookingResponse> bookings = response.body().getData();
+                    if (bookings != null && !bookings.isEmpty()) {
+                        String bookingStatus = bookings.get(0).getStatus();
+                        if (bookingStatus != null) {
+                            status = bookingStatus.toUpperCase();
+                            Log.d(TAG, "Room " + roomId + " - User booking status: " + status);
+                        } else {
+                            status = "BOOKED";
+                            Log.d(TAG, "Room " + roomId + " - Booked by user (no status)");
+                        }
+                    } else {
+                        checkRoomBookingStatus(roomId, status, rooms, totalRooms, completed);
+                        return;
+                    }
+                } else {
+                    Log.w(TAG, "Failed to get user booking for room " + roomId);
+                }
+
+                roomBookingStatus.put(roomId, status);
+                if (completed.incrementAndGet() == totalRooms) {
+                    runOnUiThread(() -> {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    });
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<List<BookingResponse>>> call, Throwable t) {
+                Log.e(TAG, "Error fetching user booking for room " + roomId + ": " + t.getMessage());
+                roomBookingStatus.put(roomId, "AVAILABLE");
+                if (completed.incrementAndGet() == totalRooms) {
+                    runOnUiThread(() -> {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    });
+                }
+            }
+        });
+    }
+
+    private void checkRoomBookingStatus(Long roomId, String currentStatus, List<Room> rooms,
+                                        int totalRooms, AtomicInteger completed) {
+        Call<ApiResponse<Integer>> countCall = apiInterface.getBookingsCountByRoom(roomId);
+
+        countCall.enqueue(new Callback<ApiResponse<Integer>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<Integer>> call, Response<ApiResponse<Integer>> response) {
+                String finalStatus = currentStatus;
+
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    Integer count = response.body().getData();
+                    if (count != null && count > 0) {
+                        finalStatus = "BOOKED";
+                        Log.d(TAG, "Room " + roomId + " - Booked by others (count: " + count + ")");
+                    }
+                }
+
+                roomBookingStatus.put(roomId, finalStatus);
+                if (completed.incrementAndGet() == totalRooms) {
+                    runOnUiThread(() -> {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    });
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ApiResponse<Integer>> call, Throwable t) {
+                Log.e(TAG, "Error checking room booking count for " + roomId + ": " + t.getMessage());
+                roomBookingStatus.put(roomId, currentStatus);
+                if (completed.incrementAndGet() == totalRooms) {
+                    runOnUiThread(() -> {
+                        showLoading(false);
+                        updateMapWithRooms(rooms);
+                    });
+                }
+            }
+        });
     }
 
     private void updateMapWithRooms(List<Room> rooms) {
         if (myMap == null) return;
 
-        // Save current location
         LatLng currentLocLatLng = null;
         if (currentLocation != null) {
-            currentLocLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+            currentLocLatLng = new LatLng(
+                    currentLocation.getLatitude(),
+                    currentLocation.getLongitude()
+            );
         }
 
-        // Clear only room markers
         for (Marker marker : markerRoomMap.keySet()) {
             marker.remove();
         }
@@ -1045,57 +1483,62 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         roomsList.clear();
         markerRoomMap.clear();
 
-        // Re-add current location marker
-        if (currentLocLatLng != null) {
-            if (currentLocationMarker == null) {
-                currentLocationMarker = myMap.addMarker(
-                        new MarkerOptions()
-                                .position(currentLocLatLng)
-                                .title("My Location")
-                                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
-                );
-            } else {
-                currentLocationMarker.setPosition(currentLocLatLng);
-            }
+        if (currentLocLatLng != null && currentLocationMarker == null) {
+            currentLocationMarker = myMap.addMarker(
+                    new MarkerOptions()
+                            .position(currentLocLatLng)
+                            .title("My Location")
+                            .icon(getResizedMarker(R.drawable.ic_location, 80, 80))
+            );
+        } else if (currentLocLatLng != null && currentLocationMarker != null) {
+            currentLocationMarker.setPosition(currentLocLatLng);
         }
 
-        // Add room markers with status-based colors
         for (Room room : rooms) {
             if (room.getLatitude() == 0 || room.getLongitude() == 0) continue;
 
             roomsList.add(room);
-            LatLng roomLocation = new LatLng(room.getLatitude(), room.getLongitude());
 
-            String status = roomBookingStatus.get(room.getId());
-            float markerColor = BitmapDescriptorFactory.HUE_BLUE;
-            String snippet = "Price: $" + room.getPrice();
+            LatLng roomLocation = new LatLng(
+                    room.getLatitude(),
+                    room.getLongitude()
+            );
 
-            if (status != null) {
-                switch (status.toUpperCase()) {
-                    case "PENDING":
-                        markerColor = BitmapDescriptorFactory.HUE_ORANGE;
-                        snippet = " Pending Request";
-                        break;
-                    case "ACCEPTED":
-                    case "CONFIRMED":
-                        markerColor = BitmapDescriptorFactory.HUE_GREEN;
-                        snippet = "Booking Approved";
-                        break;
-                    case "REJECTED":
-                        markerColor = BitmapDescriptorFactory.HUE_RED;
-                        snippet = " Request Rejected";
-                        break;
-                    case "CANCELLED":
-                        markerColor = BitmapDescriptorFactory.HUE_VIOLET;
-                        snippet = "Cancelled";
-                        break;
-                    default:
-                        markerColor = BitmapDescriptorFactory.HUE_BLUE;
-                        snippet = "Available - $" + room.getPrice();
-                        break;
-                }
-            } else {
-                snippet = "Available - $" + room.getPrice();
+            String rawStatus = roomBookingStatus.get(room.getId());
+            String status = (rawStatus == null) ? "AVAILABLE" : rawStatus.toUpperCase().trim();
+
+            Log.d(TAG, "Room " + room.getId() + " (" + room.getTitle() + ") - Final Status: " + status);
+
+            float markerColor;
+            String snippet;
+
+            switch (status) {
+                case "PENDING":
+                    markerColor = BitmapDescriptorFactory.HUE_ORANGE;
+                    snippet = "Pending Request - $" + room.getPrice();
+                    break;
+                case "ACCEPTED":
+                case "CONFIRMED":
+                    markerColor = BitmapDescriptorFactory.HUE_GREEN;
+                    snippet = "Booking Approved - $" + room.getPrice();
+                    break;
+                case "REJECTED":
+                    markerColor = BitmapDescriptorFactory.HUE_RED;
+                    snippet = "Request Rejected - $" + room.getPrice();
+                    break;
+                case "CANCELLED":
+                    markerColor = BitmapDescriptorFactory.HUE_VIOLET;
+                    snippet = "Cancelled - $" + room.getPrice();
+                    break;
+                case "BOOKED":
+                    markerColor = BitmapDescriptorFactory.HUE_RED;
+                    snippet = "Already Booked";
+                    break;
+                case "AVAILABLE":
+                default:
+                    markerColor = BitmapDescriptorFactory.HUE_BLUE;
+                    snippet = "Available - $" + room.getPrice();
+                    break;
             }
 
             Marker marker = myMap.addMarker(
@@ -1112,7 +1555,8 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             }
         }
 
-        Log.d(TAG, "Updated map with " + roomsList.size() + " room markers");
+        Log.d(TAG, "✅ Updated map with " + roomsList.size() + " room markers");
+        Toast.makeText(this, "Found " + roomsList.size() + " rooms", Toast.LENGTH_SHORT).show();
     }
 
     private void showAllRoomsOnMap() {
@@ -1139,13 +1583,10 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     private void ensureExecutor() {
-        if (executorService == null
-                || executorService.isShutdown()
-                || executorService.isTerminated()) {
+        if (executorService == null || executorService.isShutdown() || executorService.isTerminated()) {
             executorService = Executors.newSingleThreadExecutor();
         }
     }
-
 
     private void applyMapStyle() {
         if (myMap == null) return;
@@ -1165,6 +1606,7 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
     }
 
     public void saveSingleRoomOffline(Room room) {
+        ensureExecutor();
         executorService.execute(() -> {
             try {
                 RoomifyDatabase db = RoomifyDatabase.getInstance(this);
@@ -1201,8 +1643,15 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
             requestLocationPermission();
         }
 
-        // Refresh rooms when returning to map
         if (myMap != null) {
+            // Clear local database cache to force fresh load
+            executorService.execute(() -> {
+                RoomifyDatabase db = RoomifyDatabase.getInstance(this);
+                db.roomDao().deleteAllRooms();
+                Log.d(TAG, "Cache cleared on resume");
+            });
+
+            // Reload rooms from backend
             loadRoomsFromBackend();
         }
     }
@@ -1221,7 +1670,9 @@ public class LocationMap extends AppCompatActivity implements OnMapReadyCallback
         if (locationCallback != null && fusedLocationProviderClient != null) {
             fusedLocationProviderClient.removeLocationUpdates(locationCallback);
         }
-
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
+        }
     }
 
     @Override

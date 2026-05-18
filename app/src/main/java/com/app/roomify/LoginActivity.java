@@ -45,7 +45,7 @@ public class LoginActivity extends AppCompatActivity {
     private TextInputLayout emailLayout, passwordLayout;
     private TextInputEditText emailEditText, passwordEditText;
     private MaterialButton btnSignIn;
-    private Chip chipTenantLogin, chipOwnerLogin;
+    private Chip chipTenantLogin, chipOwnerLogin, chipDalaliLogin;  // NEW: Added dalali chip
     private TextView tvRoleHint;
     private MaterialButton guestButton, signUpButton;
     private SignInButton googleButton;
@@ -89,6 +89,7 @@ public class LoginActivity extends AppCompatActivity {
         btnSignIn = findViewById(R.id.button2);
         chipTenantLogin = findViewById(R.id.chipTenantLogin);
         chipOwnerLogin = findViewById(R.id.chipOwnerLogin);
+        chipDalaliLogin = findViewById(R.id.chipDalaliLogin);  // NEW
         tvRoleHint = findViewById(R.id.tvRoleHint);
         guestButton = findViewById(R.id.Register);
         signUpButton = findViewById(R.id.Signup);
@@ -106,6 +107,7 @@ public class LoginActivity extends AppCompatActivity {
             if (isChecked) {
                 selectedRole = "tenant";
                 chipOwnerLogin.setChecked(false);
+                chipDalaliLogin.setChecked(false);  // NEW
                 tvRoleHint.setText("You are logging in as a Tenant");
             }
         });
@@ -114,7 +116,18 @@ public class LoginActivity extends AppCompatActivity {
             if (isChecked) {
                 selectedRole = "owner";
                 chipTenantLogin.setChecked(false);
+                chipDalaliLogin.setChecked(false);  // NEW
                 tvRoleHint.setText("You are logging in as an Owner");
+            }
+        });
+
+        // NEW: Dalali role selection
+        chipDalaliLogin.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                selectedRole = "dalali";
+                chipTenantLogin.setChecked(false);
+                chipOwnerLogin.setChecked(false);
+                tvRoleHint.setText("You are logging in as a Dalali (Housing Agent)");
             }
         });
     }
@@ -238,7 +251,12 @@ public class LoginActivity extends AppCompatActivity {
                         String message = authResponse.getMessage();
                         if (message == null) message = "Authentication failed";
 
-                        if (message.toLowerCase().contains("password")) {
+                        // Special message for unverified dalali accounts
+                        if (message.toLowerCase().contains("verify") || message.toLowerCase().contains("verification")) {
+                            Toast.makeText(LoginActivity.this,
+                                    "Your dalali account is pending verification. You'll be notified once approved.",
+                                    Toast.LENGTH_LONG).show();
+                        } else if (message.toLowerCase().contains("password")) {
                             passwordLayout.setError(message);
                         } else if (message.toLowerCase().contains("email")) {
                             emailLayout.setError(message);
@@ -251,7 +269,7 @@ public class LoginActivity extends AppCompatActivity {
                     if (response.code() == 401) {
                         errorMsg = "Invalid email or password";
                     } else if (response.code() == 403) {
-                        errorMsg = "Account locked or disabled";
+                        errorMsg = "Account locked or disabled. Please contact support.";
                     }
                     Toast.makeText(LoginActivity.this, errorMsg, Toast.LENGTH_LONG).show();
                 }
@@ -461,6 +479,11 @@ public class LoginActivity extends AppCompatActivity {
         if ("owner".equalsIgnoreCase(role)) {
             Log.d(TAG, "Navigating to OwnerDashboard");
             intent = new Intent(LoginActivity.this, OwnerDashboard.class);
+        } else if ("dalali".equalsIgnoreCase(role)) {  // NEW: Dalali navigation
+            Log.d(TAG, "Navigating to DalaliDashboard");
+            intent = new Intent(LoginActivity.this, DalaliDashboard.class);
+            // You can add extra data for dalali
+            intent.putExtra("isVerifiedAgent", true);
         } else if ("tenant".equalsIgnoreCase(role)) {
             Log.d(TAG, "Navigating to DashboardActivity");
             intent = new Intent(LoginActivity.this, DashboardActivity.class);
@@ -493,5 +516,6 @@ public class LoginActivity extends AppCompatActivity {
         googleButton.setEnabled(!show);
         chipTenantLogin.setEnabled(!show);
         chipOwnerLogin.setEnabled(!show);
+        chipDalaliLogin.setEnabled(!show);  // NEW
     }
 }

@@ -282,26 +282,49 @@ public class BookingRequestsActivity extends AppCompatActivity {
     private void acceptBooking(BookingResponse booking) {
         Log.d(TAG, "Accepting booking - ID: " + booking.getId());
 
+        // 🔒 Prevent double click
+        booking.setStatus("PROCESSING");
+        adapter.updateBooking(booking);
+
         Call<ApiResponse<Void>> call = apiInterface.acceptBooking(booking.getId());
+
         call.enqueue(new Callback<ApiResponse<Void>>() {
             @Override
             public void onResponse(Call<ApiResponse<Void>> call, Response<ApiResponse<Void>> response) {
+
                 if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    Log.d(TAG, "✅ Booking accepted successfully");
-                    Toast.makeText(BookingRequestsActivity.this, "Booking accepted!", Toast.LENGTH_SHORT).show();
+
+                    Log.d(TAG, "Booking accepted successfully");
+
                     booking.setStatus("ACCEPTED");
                     adapter.updateBooking(booking);
+
+                    Toast.makeText(BookingRequestsActivity.this,
+                            "Booking accepted!", Toast.LENGTH_SHORT).show();
+
+                } else if (response.code() == 409) {
+                    // 🔥 NEW: conflict = already booked
+                    Toast.makeText(BookingRequestsActivity.this,
+                            "Room already booked by another user", Toast.LENGTH_LONG).show();
+
+                    adapter.removeBooking(booking);
+
                 } else if (response.code() == 401 || response.code() == 403) {
                     handleSessionExpired();
+
                 } else {
-                    String errorMsg = response.body() != null ? response.body().getMessage() : "Server error";
-                    Toast.makeText(BookingRequestsActivity.this, "Failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                    String errorMsg = response.body() != null ?
+                            response.body().getMessage() : "Server error";
+
+                    Toast.makeText(BookingRequestsActivity.this,
+                            "Failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<ApiResponse<Void>> call, Throwable t) {
-                Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(BookingRequestsActivity.this,
+                        "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -380,6 +403,15 @@ public class BookingRequestsActivity extends AppCompatActivity {
                 Toast.makeText(BookingRequestsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        Log.d(TAG, "onResume: refreshing booking requests");
+
+        loadBookingRequests(); // force refresh every time activity becomes visible
     }
 
     private void handleSessionExpired() {
